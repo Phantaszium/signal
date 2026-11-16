@@ -1,21 +1,26 @@
-import type { EvaluatedItem, PreferenceWeights, ResearchProfile } from "@/lib/types";
+import type { RunRecord } from "@/lib/monitoring/types";
+import type { DigestFrequency, EvaluatedItem, MonitoringTopic, PreferenceWeights } from "@/lib/types";
 
 /** Serializable snapshot handed from the server layout to the client store. */
 export interface AppState {
-  account: { email: string; isAdmin: boolean; emailDigest: boolean };
-  profile: ResearchProfile;
+  /** When the snapshot was loaded. Every "new", "this week" and "ago" is relative to it. */
+  now: number;
+  account: {
+    email: string;
+    isAdmin: boolean;
+    digestFrequency: DigestFrequency;
+    alertsEnabled: boolean;
+  };
+  topics: MonitoringTopic[];
   weights: PreferenceWeights;
-  /** Items in the latest ready briefing, plus every saved item. */
+  /**
+   * Assessments at or above the lowest development threshold from the last
+   * 120 days, plus every saved item. Whether each one is a development
+   * depends on its topic's sensitivity, decided on the client.
+   */
   items: EvaluatedItem[];
-  briefing: {
-    id: string;
-    mode: "nightly" | "on_demand";
-    createdAt: string;
-    scanned: number;
-    sourceCounts: Record<string, number>;
-  } | null;
-  running: { id: string; mode: "nightly" | "on_demand" } | null;
-  lastFailure: string | null;
+  /** Recent monitoring runs, newest first. */
+  runs: RunRecord[];
   savedIds: string[];
   dismissedIds: string[];
   feedbackCount: number;

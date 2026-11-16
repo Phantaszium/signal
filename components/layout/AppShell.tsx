@@ -7,10 +7,12 @@ import { cx } from "@/components/ui/primitives";
 import { useSignal } from "@/lib/store/SignalProvider";
 
 const BASE_NAV = [
-  { href: "/", label: "Today's Briefing" },
+  { href: "/", label: "Dashboard" },
+  { href: "/activity", label: "Activity" },
+  { href: "/briefings", label: "Briefings" },
+  { href: "/topics", label: "Topics" },
   { href: "/saved", label: "Saved" },
   { href: "/watchlist", label: "Watchlist" },
-  { href: "/profile", label: "Profile" },
   { href: "/settings", label: "Settings" },
 ];
 
@@ -35,7 +37,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               href={item.href}
               className={cx(
                 "whitespace-nowrap py-1",
-                pathname === item.href
+                (item.href === "/" ? pathname === "/" : pathname.startsWith(item.href))
                   ? "font-medium text-accent"
                   : "text-ink-muted",
               )}

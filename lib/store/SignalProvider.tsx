@@ -3,74 +3,53 @@
 /**
  * Client store for the signed-in app.
  *
- * The server layout loads the account's latest briefing, assessments and
- * feedback state; this provider ranks them against the learned preference
- * weights. Feedback is applied optimistically so the briefing re-ranks
- * immediately, then reconciled with the server's answer.
+ * The server layout loads the account's topics, recent assessments, runs and
+ * feedback state; this provider ranks the assessments against the learned
+ * preference weights and decides which are developments. Feedback is applied
+ * optimistically so lists re-rank immediately, then reconciled with the
+ * server's answer.
  */
 
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useMemo,
-  useState,
-  useTransition,
-} from "react";
+import { createContext, useCallback, useContext, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { recordFeedbackAction } from "@/app/(app)/actions";
+import { byPriority, toDevelopment, type Development } from "@/lib/developments";
+import type { RunRecord } from "@/lib/monitoring/types";
 import { applyFeedback, deriveLearnedPreferences } from "@/lib/preferences/model";
-import { rankBriefing, rankEvaluated } from "@/lib/ranking/scoring";
+import { rankEvaluated } from "@/lib/ranking/scoring";
 import type { AppState } from "@/lib/store/app-state";
 import type {
-  Briefing,
   FeedbackAction,
   LearnedPreference,
+  MonitoringTopic,
   PreferenceWeights,
-  ScoredPublication,
 } from "@/lib/types";
 
 interface SignalContextValue {
+  /** When the data was loaded; use instead of Date.now() during render. */
+  now: number;
   account: AppState["account"];
-  profile: AppState["profile"];
+  topics: MonitoringTopic[];
+  activeTopics: MonitoringTopic[];
+  topicById: Map<string, MonitoringTopic>;
   weights: PreferenceWeights;
   learned: LearnedPreference[];
-  briefing: Briefing;
-  hasBriefing: boolean;
-  running: AppState["running"];
-  lastFailure: string | null;
-  briefingMeta: AppState["briefing"];
+  runs: RunRecord[];
+  /** The newest run if it is still in progress. */
+  running: RunRecord | null;
+  /** Every loaded assessment, ranked, newest first. Includes non-developments. */
+  allItems: Development[];
+  /** Assessments that clear their topic's threshold and were not dismissed, newest first. */
+  developments: Development[];
   savedIds: string[];
   dismissedIds: string[];
-  savedItems: ScoredPublication[];
-  /** Every loaded item, ranked: the latest briefing plus saved items. */
-  allItems: ScoredPublication[];
+  savedItems: Development[];
   feedbackCount: number;
   recordFeedback: (publicationId: string, action: FeedbackAction) => void;
-  getScored: (id: string) => ScoredPublication | undefined;
+  getItem: (id: string) => Development | undefined;
 }
 
 const SignalContext = createContext<SignalContextValue | null>(null);
-
-function sourceNote(meta: AppState["briefing"]): string {
-  if (!meta) return "No briefing yet.";
-  const when = new Date(meta.createdAt).toLocaleString("en-US", {
-    weekday: "short",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-  const sources = [
-    ["PubMed", meta.sourceCounts.pubmed],
-    ["bioRxiv", meta.sourceCounts.biorxiv],
-    ["medRxiv", meta.sourceCounts.medrxiv],
-    ["ClinicalTrials.gov", meta.sourceCounts.clinicaltrials],
-  ]
-    .filter(([, n]) => typeof n === "number")
-    .map(([name]) => name)
-    .join(", ");
-  const kind = meta.mode === "nightly" ? "Overnight sweep" : "On-demand briefing";
-  return `${kind}, ${when}${sources ? ` · ${sources}` : ""}`;
-}
 
 export function SignalProvider({
   initial,
@@ -97,43 +76,30 @@ export function SignalProvider({
     setFeedbackCount(initial.feedbackCount);
   }
 
-  const briefingItems = useMemo(
+  const topicById = useMemo(() => new Map(initial.topics.map((t) => [t.id, t])), [initial.topics]);
+
+  const allItems = useMemo(
     () =>
-      initial.briefing
-        ? initial.items.filter((i) => i.briefingId === initial.briefing!.id)
-        : [],
-    [initial.items, initial.briefing],
+      initial.items
+        .map((i) => toDevelopment(i, i.topicId ? topicById.get(i.topicId) : undefined, weights))
+        .sort((a, b) => Date.parse(b.evaluatedAt) - Date.parse(a.evaluatedAt) || byPriority(a, b)),
+    [initial.items, topicById, weights],
   );
 
-  const briefing = useMemo<Briefing>(() => {
-    const ranked = rankBriefing(briefingItems, weights, new Set(dismissedIds));
-    return {
-      generatedAt: initial.briefing?.createdAt ?? new Date(0).toISOString(),
-      funnel: {
-        ingested: initial.briefing?.scanned ?? 0,
-        likelyRelevant: ranked.relevant.length,
-        important: ranked.high.length,
-      },
-      high: ranked.high,
-      notable: ranked.notable,
-      context: ranked.context,
-      sourceNote: sourceNote(initial.briefing),
-    };
-  }, [briefingItems, weights, dismissedIds, initial.briefing]);
+  const developments = useMemo(() => {
+    const dismissed = new Set(dismissedIds);
+    return allItems.filter((d) => d.isDevelopment && !dismissed.has(d.publication.id));
+  }, [allItems, dismissedIds]);
 
-  const getScored = useCallback(
-    (id: string) => {
-      const item = initial.items.find((i) => i.publication.id === id);
-      return item ? rankEvaluated(item, weights) : undefined;
-    },
-    [initial.items, weights],
+  const getItem = useCallback(
+    (id: string) => allItems.find((d) => d.publication.id === id),
+    [allItems],
   );
 
   const recordFeedback = useCallback(
     (publicationId: string, action: FeedbackAction) => {
       // Optimistic: re-rank now, reconcile when the server answers. Items
-      // opened from an older briefing are not in the store, so for those only
-      // the server's answer updates the weights.
+      // not in this snapshot only update when the server answers.
       const item = initial.items.find((i) => i.publication.id === publicationId);
       if (item) {
         setWeights((w) => applyFeedback(w, rankEvaluated(item, w).publication, action));
@@ -153,8 +119,6 @@ export function SignalProvider({
       startTransition(async () => {
         const result = await recordFeedbackAction(publicationId, action);
         if (!result) return;
-        // Items from older briefings are not in this snapshot; reload it so
-        // pages like /saved pick them up.
         if (!item) router.refresh();
         setWeights(result.weights);
         setSavedIds((ids) => {
@@ -170,31 +134,28 @@ export function SignalProvider({
     [initial.items, router],
   );
 
-  const value = useMemo<SignalContextValue>(
-    () => ({
+  const value = useMemo<SignalContextValue>(() => {
+    const newest = initial.runs[0];
+    return {
+      now: initial.now,
       account: initial.account,
-      profile: initial.profile,
+      topics: initial.topics,
+      activeTopics: initial.topics.filter((t) => t.active),
+      topicById,
       weights,
       learned: deriveLearnedPreferences(weights),
-      briefing,
-      hasBriefing: Boolean(initial.briefing),
-      running: initial.running,
-      lastFailure: initial.lastFailure,
-      briefingMeta: initial.briefing,
+      runs: initial.runs,
+      running: newest && (newest.status === "running" || newest.status === "evaluating") ? newest : null,
+      allItems,
+      developments,
       savedIds,
       dismissedIds,
-      savedItems: initial.items
-        .filter((i) => savedIds.includes(i.publication.id))
-        .map((i) => rankEvaluated(i, weights)),
-      allItems: initial.items
-        .map((i) => rankEvaluated(i, weights))
-        .sort((a, b) => b.signalScore - a.signalScore),
+      savedItems: allItems.filter((d) => savedIds.includes(d.publication.id)),
       feedbackCount,
       recordFeedback,
-      getScored,
-    }),
-    [initial, weights, briefing, savedIds, dismissedIds, feedbackCount, recordFeedback, getScored],
-  );
+      getItem,
+    };
+  }, [initial, topicById, weights, allItems, developments, savedIds, dismissedIds, feedbackCount, recordFeedback, getItem]);
 
   return <SignalContext.Provider value={value}>{children}</SignalContext.Provider>;
 }

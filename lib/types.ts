@@ -1,15 +1,19 @@
 /**
  * Core data models for Signal.
  *
- * Everything in the app flows through these three shapes:
- *   ResearchProfile  — what the scientist cares about
- *   Publication      — a normalized item from any source (PubMed, bioRxiv, ...)
- *   ScoredPublication — a Publication plus transparent ranking output
+ * Everything in the app flows through these shapes:
+ *   MonitoringTopic   — one research question the scientist wants watched
+ *   Publication       — a normalized item from any source (PubMed, bioRxiv, ...)
+ *   EvaluatedItem     — a Publication plus the AI's stored assessment of it
+ *   ScoredPublication — an EvaluatedItem ranked with the user's preferences
  */
 
 export type PublicationType = "journal" | "preprint" | "trial" | "regulatory";
 
-export type PublicationOrigin = "pubmed" | "biorxiv" | "medrxiv" | "clinicaltrials";
+export type PublicationOrigin = "pubmed" | "biorxiv" | "medrxiv" | "clinicaltrials" | "europepmc";
+
+/** The sources a topic can be monitored on. Same keys as PublicationOrigin. */
+export type SourceKey = PublicationOrigin;
 
 export type Tier = "HIGH" | "NOTABLE" | "CONTEXT";
 
@@ -114,6 +118,42 @@ export interface ResearchProfile {
   organizations: string[];
 }
 
+/** A research profile plus the fields that only matter for monitoring. */
+export interface TopicProfile extends ResearchProfile {
+  /** Alternative spellings and phrasings of the keywords; searched alongside them. */
+  synonyms: string[];
+  organisms: string[];
+  /** Records mentioning any of these are never sent for assessment. */
+  exclusions: string[];
+}
+
+/**
+ * How much a record must bear on the topic to count as a development, and how
+ * strictly the free lexical prefilter screens records before the AI sees them.
+ */
+export type Sensitivity = "broad" | "balanced" | "strict";
+
+/** One monitored research topic. A user can have several. */
+export interface MonitoringTopic {
+  id: string;
+  profile: TopicProfile;
+  sensitivity: Sensitivity;
+  sources: SourceKey[];
+  active: boolean;
+  backfilledAt: string | null;
+  lastCheckedAt: string | null;
+  createdAt: string;
+}
+
+/**
+ * How often the user gets a digest of developments. "important_only" sends no
+ * periodic digest, only alerts for high-priority developments.
+ */
+export type DigestFrequency = "daily" | "weekly" | "monthly" | "important_only" | "off";
+
+/** How much a development changes what is known, independent of relevance. */
+export type Significance = "major" | "moderate" | "minor";
+
 /** Learned preferences — seeded now, updated by feedback. */
 export interface LearnedPreference {
   id: string;
@@ -143,22 +183,6 @@ export interface FeedbackEvent {
   at: string;
 }
 
-/** Funnel counters shown across the whole app. */
-export interface FunnelCounts {
-  ingested: number;
-  likelyRelevant: number;
-  important: number;
-}
-
-export interface Briefing {
-  generatedAt: string;
-  funnel: FunnelCounts;
-  high: ScoredPublication[];
-  notable: ScoredPublication[];
-  context: ScoredPublication[];
-  sourceNote: string;
-}
-
 /** One dimension of the model's judgement, with the reason that drove it. */
 export interface AssessedDimension {
   score: number;
@@ -183,18 +207,32 @@ export interface AiAssessment {
   modelSystem: string;
   limitations: string[];
   authorsReport: string[];
-  signalInterpretation: string[];
+  /** Replaced by `implications`; kept so earlier assessments still render. */
+  signalInterpretation?: string[];
   signals: Required<Omit<PublicationSignals, "cohortSize">> & { cohortSize: number | null };
   matchedInterests: string[];
   matchedOrganizations: string[];
   tags: string[];
   model: string;
   evaluatedAt: string;
+  // --- Added with monitoring topics; absent on assessments made before then. ---
+  /** The topic the AI judged this record bears on most. */
+  topicId?: string;
+  significance?: { level: Significance; reason: string };
+  /** The new finding or event, as the record reports it. */
+  whatChanged?: string;
+  /** Signal's interpretation of what it could mean for the topic. */
+  implications?: string[];
+  /** Suggested follow-ups. Speculative by nature, and labelled so. */
+  nextSteps?: string[];
 }
 
 /** A publication with its stored assessment, as loaded for one user. */
 export interface EvaluatedItem {
   publication: Publication;
   assessment: AiAssessment;
-  briefingId: string | null;
+  runId: string | null;
+  topicId: string | null;
+  /** When Signal assessed it, which is when it became known to the user. */
+  evaluatedAt: string;
 }

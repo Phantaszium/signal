@@ -1,25 +1,22 @@
-import type {
-  LearnedPreference,
-  PreferenceWeights,
-  ResearchProfile,
-} from "@/lib/types";
+import type { LearnedPreference, PreferenceWeights, TopicProfile } from "@/lib/types";
 
 /**
- * A worked example profile, offered during onboarding so a new researcher can
- * see what a complete profile looks like before writing their own.
+ * A worked example topic, offered when creating one so a researcher can see
+ * what a complete topic looks like before writing their own.
  */
-export const EXAMPLE_PROFILE: ResearchProfile = {
-  program: "KRAS G12D / NSCLC",
+export const EXAMPLE_PROFILE: TopicProfile = {
+  program: "KRAS G12D in non-small cell lung cancer",
   description:
-    "We study acquired resistance to KRAS G12D-selective inhibitors in non-small-cell lung cancer. Our work combines patient-derived models and longitudinal ctDNA to map how RAS/MAPK rewiring drives escape from targeted inhibition, and to identify combination strategies that extend durability.",
+    "We study acquired resistance to KRAS G12D-selective inhibitors in non-small-cell lung cancer: which resistance mechanisms emerge, which combination therapies extend durability, and what the clinical trial landscape for G12D inhibitors looks like. We use patient-derived models and longitudinal ctDNA.",
   keywords: [
     "KRAS G12D",
-    "NSCLC",
+    "G12D inhibitor",
     "acquired resistance",
     "RAS/MAPK signaling",
-    "targeted therapy",
-    "tumor evolution",
+    "combination therapy",
   ],
+  synonyms: ["KRAS p.G12D", "MRTX1133", "zoldonrasib", "pan-RAS inhibitor", "RAS(ON) inhibitor"],
+  organisms: [],
   genes: ["KRAS", "SOS1", "SHP2", "MEK1", "ERK2", "EGFR", "MET", "NF1", "PTPN11"],
   diseases: [
     "non-small-cell lung cancer",
@@ -39,6 +36,7 @@ export const EXAMPLE_PROFILE: ResearchProfile = {
     "Eli Lilly",
     "Genentech/Roche",
   ],
+  exclusions: [],
 };
 
 /**

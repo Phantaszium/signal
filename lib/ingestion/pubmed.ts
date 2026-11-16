@@ -7,14 +7,23 @@ import "server-only";
  * Every failure path returns null so one slow source never sinks a briefing.
  */
 
-import { fetchWithDeadline, type SourceResult } from "@/lib/ingestion/http";
-import type { Publication, ResearchProfile } from "@/lib/types";
+import { fetchWithDeadline, logSourceFailure, type QueryTerms, type SourceResult } from "@/lib/ingestion/http";
+import type { Publication } from "@/lib/types";
 
 const EUTILS = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils";
 
-/** Turn a research profile into a PubMed boolean query over an entry-date window. */
-export function buildQuery(profile: ResearchProfile, from: string, to: string): string {
-  const terms = [...profile.keywords, ...profile.genes.slice(0, 5), ...profile.diseases.slice(0, 3)]
+/**
+ * Turn a topic into a PubMed boolean query over an entry-date window. Terms
+ * are ORed: a record needs only one of them, and the AI judges the rest.
+ */
+export function buildQuery(profile: QueryTerms, from: string, to: string): string {
+  const terms = [
+    ...profile.keywords,
+    ...(profile.synonyms ?? []),
+    ...profile.genes.slice(0, 5),
+    ...(profile.organisms ?? []),
+    ...profile.diseases.slice(0, 3),
+  ]
     .map((t) => `"${t.replace(/"/g, "")}"[Title/Abstract]`)
     .join(" OR ");
   const day = (iso: string) => iso.replace(/-/g, "/");
@@ -132,7 +141,7 @@ async function fetchAbstracts(
 }
 
 export async function fetchPubMed(
-  profile: ResearchProfile,
+  profile: QueryTerms,
   opts: { from: string; to: string; deadline: number; limit?: number },
 ): Promise<SourceResult | null> {
   const { from, to, deadline, limit = 120 } = opts;
@@ -142,7 +151,10 @@ export async function fetchPubMed(
       `${EUTILS}/esearch.fcgi?db=pubmed&term=${query}&retmax=${limit}&sort=date&retmode=json`,
     );
     const searchRes = await fetchWithDeadline(searchUrl, deadline);
-    if (!searchRes.ok) return null;
+    if (!searchRes.ok) {
+      logSourceFailure("pubmed", `esearch HTTP ${searchRes.status}`);
+      return null;
+    }
     const searchJson = await searchRes.json();
     const ids: string[] = searchJson?.esearchresult?.idlist ?? [];
     const scanned = Number(searchJson?.esearchresult?.count ?? ids.length);
@@ -152,7 +164,10 @@ export async function fetchPubMed(
       withKey(`${EUTILS}/esummary.fcgi?db=pubmed&id=${ids.join(",")}&retmode=json`),
       deadline,
     );
-    if (!sumRes.ok) return null;
+    if (!sumRes.ok) {
+      logSourceFailure("pubmed", `esummary HTTP ${sumRes.status}`);
+      return null;
+    }
     const sumJson = await sumRes.json();
     const abstracts = await fetchAbstracts(ids, deadline);
 
@@ -180,8 +195,15 @@ export async function fetchPubMed(
         };
       });
 
-    return { publications, scanned };
-  } catch {
+    const complete = scanned <= ids.length;
+    return {
+      publications,
+      scanned,
+      complete,
+      note: complete ? undefined : `Read the newest ${ids.length} of ${scanned} matching records.`,
+    };
+  } catch (error) {
+    logSourceFailure("pubmed", error);
     return null;
   }
 }

@@ -1,5 +1,5 @@
-import { BriefingFeed } from "@/components/briefing/BriefingFeed";
+import { Dashboard } from "@/components/dashboard/Dashboard";
 
-export default function TodaysBriefingPage() {
-  return <BriefingFeed />;
+export default function DashboardPage() {
+  return <Dashboard />;
 }

@@ -1,5 +1,10 @@
 import Link from "next/link";
-import type { Publication, PublicationType, Tier } from "@/lib/types";
+import {
+  RELEVANCE_LABEL,
+  SIGNIFICANCE_LABEL,
+  type RelevanceClass,
+} from "@/lib/developments";
+import type { Publication, PublicationType, Significance, Tier } from "@/lib/types";
 
 export function cx(...parts: (string | false | null | undefined)[]) {
   return parts.filter(Boolean).join(" ");
@@ -39,6 +44,7 @@ const ORIGIN_LABEL: Record<Publication["origin"], string> = {
   biorxiv: "bioRxiv",
   medrxiv: "medRxiv",
   clinicaltrials: "ClinicalTrials.gov",
+  europepmc: "Europe PMC",
 };
 export { ORIGIN_LABEL };
 
@@ -71,6 +77,52 @@ export function TierLabel({ tier }: { tier: Tier }) {
       </h2>
       <span className="text-xs text-ink-faint">{copy[tier]}</span>
     </div>
+  );
+}
+
+/** Relevance to the user's topic, as a class plus the underlying score. */
+export function RelevanceBadge({ cls, score }: { cls: RelevanceClass; score: number }) {
+  const tone = {
+    direct: "border-accent/30 bg-accent-soft text-accent",
+    related: "border-line-strong bg-white text-ink",
+    adjacent: "border-line bg-canvas text-ink-muted",
+    unrelated: "border-line bg-canvas text-ink-faint",
+  }[cls];
+  return (
+    <span
+      title="How directly this bears on your topic (AI relevance score, 0–100)"
+      className={cx(
+        "inline-flex items-center gap-1.5 rounded border px-1.5 py-0.5 text-[11px] leading-4 font-medium whitespace-nowrap",
+        tone,
+      )}
+    >
+      {RELEVANCE_LABEL[cls]}
+      <span className="tabular opacity-70">{score}</span>
+    </span>
+  );
+}
+
+/** How much the development changes what is known, independent of relevance. */
+export function SignificanceBadge({ level, inferred = false }: { level: Significance; inferred?: boolean }) {
+  const tone = {
+    major: "border-high-line bg-high-soft text-high",
+    moderate: "border-line-strong bg-white text-ink",
+    minor: "border-line bg-canvas text-ink-muted",
+  }[level];
+  return (
+    <span
+      title={
+        inferred
+          ? "Importance estimated from novelty, evidence and strategic scores"
+          : "How significant the development is for the field (AI judgement)"
+      }
+      className={cx(
+        "inline-flex items-center rounded border px-1.5 py-0.5 text-[11px] leading-4 font-medium whitespace-nowrap",
+        tone,
+      )}
+    >
+      {SIGNIFICANCE_LABEL[level]} importance{inferred ? "*" : ""}
+    </span>
   );
 }
 
@@ -243,6 +295,19 @@ export function formatDate(iso: string) {
     month: "short",
     day: "numeric",
   });
+}
+
+/** "3 hours ago", "yesterday", or a date. For timestamps, not date-only strings. */
+export function timeAgo(iso: string, now: number) {
+  const minutes = Math.round((now - Date.parse(iso)) / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  const days = Math.round(hours / 24);
+  if (days === 1) return "yesterday";
+  if (days < 7) return `${days} days ago`;
+  return formatDate(iso);
 }
 
 export function relativeDay(iso: string, now = new Date()) {

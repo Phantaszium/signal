@@ -1,5 +1,6 @@
 import { SettingsForms } from "@/components/settings/SettingsForms";
 import { requireReadyAccount } from "@/lib/auth/session";
+import { emailConfigured } from "@/lib/email/digest";
 
 export const metadata = { title: "Settings · Signal" };
 
@@ -7,7 +8,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
   const account = await requireReadyAccount();
   const { notice } = await searchParams;
   return (
-    <div className="px-6 py-7 lg:px-10 lg:py-9">
+    <div className="px-4 py-6 sm:px-6 lg:px-10 lg:py-9">
       <header className="max-w-3xl">
         <h1 className="text-[22px] font-semibold tracking-[-0.02em] text-ink">Settings</h1>
         <p className="mt-1 text-[13px] text-ink-muted">Signed in as {account.email}</p>
@@ -19,7 +20,12 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
         )}
       </header>
       <div className="mt-6 max-w-2xl">
-        <SettingsForms email={account.email} emailDigest={account.emailDigest} />
+        <SettingsForms
+          email={account.email}
+          digestFrequency={account.digestFrequency}
+          alertsEnabled={account.alertsEnabled}
+          emailConfigured={emailConfigured()}
+        />
       </div>
     </div>
   );

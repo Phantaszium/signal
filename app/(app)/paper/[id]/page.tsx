@@ -1,6 +1,6 @@
 import { PaperDetail } from "@/components/paper/PaperDetail";
 import { requireReadyAccount } from "@/lib/auth/session";
-import { itemsByIds } from "@/lib/db/briefings";
+import { itemsByIds } from "@/lib/db/evaluations";
 
 export default async function PaperPage({ params }: PageProps<"/paper/[id]">) {
   const { id: raw } = await params;

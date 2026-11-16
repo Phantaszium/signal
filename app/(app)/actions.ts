@@ -3,8 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireReadyAccount } from "@/lib/auth/session";
-import { updateAccount } from "@/lib/db/accounts";
-import { getItemState, itemsByIds, recordFeedbackEvent, setItemState } from "@/lib/db/briefings";
+import { DIGEST_FREQUENCIES, updateAccount } from "@/lib/db/accounts";
+import { getItemState, itemsByIds, recordFeedbackEvent, setItemState } from "@/lib/db/evaluations";
 import { applyFeedback } from "@/lib/preferences/model";
 import { rankEvaluated } from "@/lib/ranking/scoring";
 import type { FeedbackAction, PreferenceWeights } from "@/lib/types";
@@ -53,8 +53,19 @@ export async function recordFeedbackAction(
   return { weights, saved, dismissed };
 }
 
-export async function setEmailDigestAction(enabled: boolean): Promise<void> {
+const digestSchema = z.object({
+  digestFrequency: z.enum(DIGEST_FREQUENCIES as [string, ...string[]]),
+  alertsEnabled: z.boolean(),
+});
+
+export async function setDigestSettingsAction(input: unknown): Promise<{ ok: boolean }> {
   const account = await requireReadyAccount();
-  await updateAccount(account.id, { emailDigest: Boolean(enabled) });
-  revalidatePath("/settings");
+  const parsed = digestSchema.safeParse(input);
+  if (!parsed.success) return { ok: false };
+  await updateAccount(account.id, {
+    digestFrequency: parsed.data.digestFrequency as (typeof DIGEST_FREQUENCIES)[number],
+    alertsEnabled: parsed.data.alertsEnabled,
+  });
+  revalidatePath("/", "layout");
+  return { ok: true };
 }

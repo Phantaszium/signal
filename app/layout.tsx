@@ -16,9 +16,9 @@ const mono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Signal — Know what changed before it changes your field",
+  title: "Signal — Research intelligence",
   description:
-    "Scientific literature intelligence: read broadly, surface the few papers that matter, and explain why.",
+    "Signal monitors your research topics and tells you what changed, why it matters, and what to do next.",
 };
 
 export default function RootLayout({

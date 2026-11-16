@@ -5,6 +5,8 @@ import { redirect } from "next/navigation";
 import { env } from "@/lib/env";
 import { createAuthClient } from "@/lib/supabase/server";
 import { ensureAccount, type Account } from "@/lib/db/accounts";
+import { listTopics } from "@/lib/db/topics";
+import type { MonitoringTopic } from "@/lib/types";
 
 export interface SessionUser {
   id: string;
@@ -30,13 +32,18 @@ export const requireAccount = cache(async (): Promise<Account> => {
   return ensureAccount(user.id, user.email);
 });
 
+/** The signed-in user's monitoring topics. Cached for the duration of a request. */
+export const currentTopics = cache(async (userId: string): Promise<MonitoringTopic[]> =>
+  listTopics(userId),
+);
+
 /**
- * An approved account with a research profile — the precondition for every
- * page that shows or spends money on briefings.
+ * An approved account with at least one monitoring topic — the precondition
+ * for every page that shows or spends money on monitoring.
  */
 export const requireReadyAccount = cache(async (): Promise<Account> => {
   const account = await requireAccount();
-  if (!account.researchProfile) redirect("/onboarding");
+  if (!(await currentTopics(account.id)).length) redirect("/onboarding");
   if (!account.approved) redirect("/pending");
   return account;
 });

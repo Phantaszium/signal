@@ -11,19 +11,26 @@ const dimension = z.object({
 });
 
 export const assessmentSchema = z.object({
+  topic: z.string().describe("Label of the topic this record bears on most, e.g. T1"),
   relevance: dimension,
+  significance: z.object({
+    level: z.enum(["major", "moderate", "minor"]),
+    reason: z.string(),
+  }),
   novelty: dimension,
   evidence: dimension,
   strategic: dimension,
-  whyThisMatters: z.string(),
   summary: z.string(),
+  whatChanged: z.string(),
+  whyThisMatters: z.string(),
+  implications: z.array(z.string()),
+  nextSteps: z.array(z.string()),
   plainEnglish: z.string(),
   keyFindings: z.array(z.string()),
   studyDesign: z.string(),
   modelSystem: z.string(),
   limitations: z.array(z.string()),
   authorsReport: z.array(z.string()),
-  signalInterpretation: z.array(z.string()),
   signals: z.object({
     mechanistic: z.boolean(),
     inVitroOnly: z.boolean(),

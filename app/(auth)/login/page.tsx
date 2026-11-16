@@ -12,7 +12,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   return (
     <AuthCard
       title="Sign in"
-      subtitle="Your daily briefing of the literature that matters to your research."
+      subtitle="Know what changed in your field, why it matters, and what to do next."
       footer={
         <>
           New to Signal?{" "}

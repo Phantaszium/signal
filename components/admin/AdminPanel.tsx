@@ -10,8 +10,7 @@ interface Row {
   email: string;
   approved: boolean;
   isAdmin: boolean;
-  hasProfile: boolean;
-  program: string | null;
+  topics: string[];
   createdAt: string;
 }
 
@@ -54,7 +53,7 @@ export function AdminPanel({
                 </p>
                 <p className="text-[11px] text-ink-faint">
                   Joined {formatDate(a.createdAt)} ·{" "}
-                  {a.hasProfile ? a.program : "no research profile yet"}
+                  {a.topics.length ? a.topics.join(" · ") : "no topics yet"}
                 </p>
               </div>
               <div className="flex items-center gap-2">

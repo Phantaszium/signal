@@ -3,7 +3,10 @@ import "server-only";
 import { env } from "@/lib/env";
 import { db } from "@/lib/supabase/admin";
 import { NEUTRAL_PREFERENCE_WEIGHTS } from "@/lib/preferences/model";
-import type { PreferenceWeights, ResearchProfile } from "@/lib/types";
+import type { DigestFrequency, PreferenceWeights } from "@/lib/types";
+
+export type { DigestFrequency };
+export const DIGEST_FREQUENCIES: DigestFrequency[] = ["daily", "weekly", "monthly", "important_only", "off"];
 
 export interface Account {
   id: string;
@@ -11,9 +14,10 @@ export interface Account {
   displayName: string | null;
   approved: boolean;
   isAdmin: boolean;
-  researchProfile: ResearchProfile | null;
   weights: PreferenceWeights;
-  emailDigest: boolean;
+  digestFrequency: DigestFrequency;
+  alertsEnabled: boolean;
+  lastDigestAt: string | null;
   lastOnDemandAt: string | null;
   createdAt: string;
 }
@@ -23,9 +27,10 @@ interface ProfileRow {
   email: string;
   display_name: string | null;
   approved: boolean;
-  research_profile: ResearchProfile | null;
   preference_weights: PreferenceWeights | null;
-  email_digest: boolean;
+  digest_frequency: DigestFrequency;
+  alerts_enabled: boolean;
+  last_digest_at: string | null;
   last_on_demand_at: string | null;
   created_at: string;
 }
@@ -39,9 +44,10 @@ function toAccount(row: ProfileRow): Account {
     // Admins never wait on their own approval queue.
     approved: row.approved || isAdmin,
     isAdmin,
-    researchProfile: row.research_profile,
     weights: { ...NEUTRAL_PREFERENCE_WEIGHTS, ...(row.preference_weights ?? {}) },
-    emailDigest: row.email_digest,
+    digestFrequency: row.digest_frequency,
+    alertsEnabled: row.alerts_enabled,
+    lastDigestAt: row.last_digest_at,
     lastOnDemandAt: row.last_on_demand_at,
     createdAt: row.created_at,
   };
@@ -75,12 +81,9 @@ export async function ensureAccount(id: string, email: string): Promise<Account>
   return created;
 }
 
-/** Accounts that should receive a nightly briefing. */
-export async function listBriefingAccounts(): Promise<Account[]> {
-  const { data, error } = await db()
-    .from("profiles")
-    .select("*")
-    .not("research_profile", "is", null);
+/** Approved accounts: the only ones monitoring runs and digests are spent on. */
+export async function listApprovedAccounts(): Promise<Account[]> {
+  const { data, error } = await db().from("profiles").select("*");
   if (error) throw error;
   return (data as ProfileRow[]).map(toAccount).filter((a) => a.approved);
 }
@@ -99,18 +102,18 @@ export async function updateAccount(
   patch: Partial<{
     displayName: string | null;
     approved: boolean;
-    researchProfile: ResearchProfile;
     weights: PreferenceWeights;
-    emailDigest: boolean;
+    digestFrequency: DigestFrequency;
+    alertsEnabled: boolean;
     lastOnDemandAt: string;
   }>,
 ): Promise<void> {
   const row: Record<string, unknown> = {};
   if (patch.displayName !== undefined) row.display_name = patch.displayName;
   if (patch.approved !== undefined) row.approved = patch.approved;
-  if (patch.researchProfile !== undefined) row.research_profile = patch.researchProfile;
   if (patch.weights !== undefined) row.preference_weights = patch.weights;
-  if (patch.emailDigest !== undefined) row.email_digest = patch.emailDigest;
+  if (patch.digestFrequency !== undefined) row.digest_frequency = patch.digestFrequency;
+  if (patch.alertsEnabled !== undefined) row.alerts_enabled = patch.alertsEnabled;
   if (patch.lastOnDemandAt !== undefined) row.last_on_demand_at = patch.lastOnDemandAt;
   const { error } = await db().from("profiles").update(row).eq("id", id);
   if (error) throw error;
@@ -131,6 +134,33 @@ export async function claimOnDemandSlot(id: string, cooldownMs: number): Promise
     .select("id");
   if (error) throw error;
   return Boolean(data?.length);
+}
+
+/**
+ * Atomically claim the next digest period: succeeds only if no other run has
+ * moved last_digest_at since `previous` was read, so overlapping cron calls
+ * cannot build the same digest twice.
+ */
+export async function claimDigestPeriod(
+  id: string,
+  previous: string | null,
+  now: string,
+): Promise<boolean> {
+  let query = db().from("profiles").update({ last_digest_at: now }).eq("id", id);
+  query = previous ? query.eq("last_digest_at", previous) : query.is("last_digest_at", null);
+  const { data, error } = await query.select("id");
+  if (error) throw error;
+  return Boolean(data?.length);
+}
+
+/** Undo a claim whose digest could not be built, so the next finalize retries it. */
+export async function releaseDigestPeriod(id: string, claimed: string, previous: string | null): Promise<void> {
+  const { error } = await db()
+    .from("profiles")
+    .update({ last_digest_at: previous })
+    .eq("id", id)
+    .eq("last_digest_at", claimed);
+  if (error) throw error;
 }
 
 export async function listInvites(): Promise<{ email: string; createdAt: string }[]> {

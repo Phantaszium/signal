@@ -17,6 +17,31 @@ export interface SourceResult {
   publications: Publication[];
   /** Records the source reported/returned for the window, before any filtering. */
   scanned: number;
+  /**
+   * False when the source had more matching records than were read, because
+   * of a result limit or the time budget. Monitoring status reports this.
+   */
+  complete?: boolean;
+  /** Why the result is incomplete, in a sentence a user can read. */
+  note?: string;
+}
+
+/** The profile fields every adapter's query builder reads. */
+export interface QueryTerms {
+  keywords: string[];
+  synonyms?: string[];
+  genes: string[];
+  organisms?: string[];
+  diseases: string[];
+}
+
+/**
+ * Log why a source returned nothing usable. Adapters return null on failure
+ * so one bad source never sinks a run; this keeps the reason in the logs.
+ */
+export function logSourceFailure(source: string, reason: unknown): void {
+  const message = reason instanceof Error ? reason.message : String(reason);
+  console.warn(`[signal:source] ${source} failed: ${message}`);
 }
 
 /**

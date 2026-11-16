@@ -4,8 +4,9 @@
  * Two stages:
  *
  *   1. prefilterScore — a cheap lexical match of every ingested record against
- *      the research profile. It decides which few dozen items are worth
- *      sending to the AI at all; most of the volume is dropped here.
+ *      a monitored topic. It decides which few dozen items are worth sending
+ *      to the AI at all; most of the volume is dropped here. How much it takes
+ *      to pass depends on the topic's sensitivity.
  *   2. rankEvaluated — combines the AI's per-dimension judgement (relevance,
  *      novelty, evidence, strategic significance) with the user's learned
  *      preference weights into one transparent composite score.
@@ -18,11 +19,12 @@ import type {
   EvaluatedItem,
   Publication,
   PreferenceWeights,
-  ResearchProfile,
   ScoreBreakdown,
   ScoreExplanation,
   ScoredPublication,
+  Sensitivity,
   Tier,
+  TopicProfile,
 } from "@/lib/types";
 
 /** Relative contribution of each dimension to the composite Signal score. */
@@ -42,23 +44,14 @@ export const DIMENSION_LABELS: Record<keyof ScoreBreakdown, string> = {
   strategicSignificance: "Strategic significance",
 };
 
-/** Items the AI scores below this relevance never reach the briefing. */
-export const RELEVANCE_FLOOR = 40;
-
 /**
- * Lexical prefilter score an item needs before it is sent to the AI: any one
- * keyword, gene, disease or organisation match. The per-run candidate cap,
- * not this floor, is what bounds AI cost.
+ * Lexical prefilter score a record needs on a broad topic: any one keyword,
+ * gene, organism, disease or organisation match. A technique alone is not
+ * enough. The per-run candidate cap, not this floor, is what bounds AI cost.
  */
 export const PREFILTER_FLOOR = 15;
 
 export const TIER_THRESHOLDS = { high: 74, notable: 54 } as const;
-
-/**
- * Briefing discipline: the product promise is "3 important", so the HIGH
- * section is capped regardless of how many items clear the threshold.
- */
-export const MAX_HIGH_ITEMS = 3;
 
 const clamp = (n: number) => Math.max(0, Math.min(100, Math.round(n)));
 
@@ -82,31 +75,54 @@ function hits(corpus: string, term: string): boolean {
 
 // --------------------------------------------------------------- dimensions
 
+export interface PrefilterResult {
+  score: number;
+  /** Whether the record goes on to AI assessment for this topic. */
+  passes: boolean;
+  /** The exclusion term that ruled it out, if any. */
+  excludedBy: string | null;
+  reasons: string[];
+  matched: string[];
+}
+
 /**
- * Stage 1: lexical match against the profile. Fast and free, so it runs on
- * every ingested record; only items above PREFILTER_FLOOR go to the AI.
+ * Stage 1: lexical match against one topic. Fast and free, so it runs on
+ * every ingested record.
+ *
+ * Sensitivity sets the bar: broad passes any single profile term; balanced
+ * needs a keyword, gene or organism (a shared disease or company name alone
+ * is too often a coincidence); strict needs one of those plus a second term.
  */
 export function prefilterScore(
   pub: Publication,
-  profile: ResearchProfile,
-): { score: number; reasons: string[]; matched: string[] } {
+  profile: TopicProfile,
+  sensitivity: Sensitivity = "broad",
+): PrefilterResult {
   const corpus = corpusOf(pub);
   const reasons: string[] = [];
   const matched: string[] = [];
+
+  const excludedBy = profile.exclusions.find((e) => hits(corpus, e)) ?? null;
+
   let score = 8; // small floor so nothing is exactly zero
 
-  // Core program keywords carry the most weight.
-  const keywordHits = profile.keywords.filter((k) => hits(corpus, k));
+  // Core program keywords (and their synonyms) carry the most weight.
+  const keywordHits = [...profile.keywords, ...profile.synonyms].filter((k) => hits(corpus, k));
   score += keywordHits.length * 15;
   matched.push(...keywordHits);
   if (keywordHits.length) {
-    reasons.push(`Matches ${keywordHits.length} program keyword(s): ${keywordHits.join(", ")}`);
+    reasons.push(`Matches ${keywordHits.length} keyword(s): ${keywordHits.join(", ")}`);
   }
 
   const geneHits = profile.genes.filter((g) => hits(corpus, g));
   score += geneHits.length * 7;
   matched.push(...geneHits);
   if (geneHits.length) reasons.push(`Names tracked genes/proteins: ${geneHits.join(", ")}`);
+
+  const organismHits = profile.organisms.filter((o) => hits(corpus, o));
+  score += organismHits.length * 12;
+  matched.push(...organismHits);
+  if (organismHits.length) reasons.push(`Involves tracked organisms: ${organismHits.join(", ")}`);
 
   const diseaseHits = profile.diseases.filter((d) => hits(corpus, d));
   score += diseaseHits.length * 9;
@@ -124,11 +140,21 @@ export function prefilterScore(
   matched.push(...techniqueHits);
   if (techniqueHits.length) reasons.push(`Uses methods you work with: ${techniqueHits.join(", ")}`);
 
-  if (!keywordHits.length && !geneHits.length) {
-    reasons.push("No program keyword or tracked gene appears in the text");
-  }
+  const core = keywordHits.length + geneHits.length + organismHits.length;
+  const all = core + diseaseHits.length + techniqueHits.length + orgHits.length;
+  if (!core) reasons.push("No keyword, tracked gene or organism appears in the text");
 
-  return { score: clamp(score), reasons, matched: Array.from(new Set(matched)) };
+  const clears =
+    sensitivity === "broad" ? score >= PREFILTER_FLOOR : sensitivity === "balanced" ? core >= 1 : core >= 1 && all >= 2;
+  if (excludedBy) reasons.push(`Mentions an excluded term: ${excludedBy}`);
+
+  return {
+    score: clamp(score),
+    passes: clears && !excludedBy,
+    excludedBy,
+    reasons,
+    matched: Array.from(new Set(matched)),
+  };
 }
 
 function scoreUserPreferenceFit(
@@ -243,36 +269,5 @@ export function rankEvaluated(
     explanations,
     matchedInterests: a.matchedInterests,
     matchedOrganizations: a.matchedOrganizations,
-  };
-}
-
-export interface RankedSections {
-  /** Everything above the relevance floor, best first. */
-  relevant: ScoredPublication[];
-  high: ScoredPublication[];
-  notable: ScoredPublication[];
-  context: ScoredPublication[];
-}
-
-/** Rank, filter and tier a set of evaluated items, capping HIGH at three. */
-export function rankBriefing(
-  items: EvaluatedItem[],
-  weights: PreferenceWeights,
-  dismissedIds: ReadonlySet<string> = new Set(),
-): RankedSections {
-  const relevant = items
-    .filter((i) => !dismissedIds.has(i.publication.id))
-    .map((i) => rankEvaluated(i, weights))
-    .filter((s) => s.scores.researchRelevance >= RELEVANCE_FLOOR)
-    .sort((a, b) => b.signalScore - a.signalScore);
-
-  const high = relevant.slice(0, MAX_HIGH_ITEMS).filter((s) => s.tier === "HIGH");
-  const highIds = new Set(high.map((s) => s.publication.id));
-  const rest = relevant.filter((s) => !highIds.has(s.publication.id));
-  return {
-    relevant,
-    high,
-    notable: rest.filter((s) => s.tier !== "CONTEXT"),
-    context: rest.filter((s) => s.tier === "CONTEXT"),
   };
 }

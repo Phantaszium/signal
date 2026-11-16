@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useSignal } from "@/lib/store/SignalProvider";
-import { PaperCard } from "@/components/briefing/PaperCard";
+import { DevelopmentCard } from "@/components/developments/DevelopmentCard";
 import { Button, Panel, formatDate } from "@/components/ui/primitives";
 
 export function SavedList() {
@@ -10,19 +10,19 @@ export function SavedList() {
   const dismissed = allItems.filter((s) => dismissedIds.includes(s.publication.id));
 
   return (
-    <div className="px-6 py-7 lg:px-10 lg:py-9">
+    <div className="px-4 py-6 sm:px-6 lg:px-10 lg:py-9">
       <header className="max-w-3xl">
         <h1 className="text-[22px] font-semibold tracking-[-0.02em] text-ink">Saved</h1>
         <p className="mt-1 text-[13px] text-ink-muted">
           {savedItems.length === 0
-            ? "Nothing saved yet. Use Save on any card in the briefing."
+            ? "Nothing saved yet. Use Save on any development."
             : `${savedItems.length} item${savedItems.length === 1 ? "" : "s"} saved for follow-up.`}
         </p>
       </header>
 
       <div className="mt-6 max-w-4xl space-y-3">
         {savedItems.map((item) => (
-          <PaperCard key={item.publication.id} item={item} />
+          <DevelopmentCard key={item.publication.id} item={item} />
         ))}
 
         {savedItems.length === 0 && (
@@ -32,7 +32,7 @@ export function SavedList() {
               href="/"
               className="mt-2 inline-block text-[13px] font-medium text-accent hover:underline"
             >
-              Go to Today&rsquo;s Briefing
+              Go to the dashboard
             </Link>
           </div>
         )}
@@ -42,8 +42,8 @@ export function SavedList() {
         <div className="mt-10 max-w-4xl">
           <Panel title="Marked not relevant">
             <p className="text-[11px] leading-relaxed text-ink-faint">
-              These are excluded from your briefing. Each dismissal also adjusts
-              the preference model.
+              These are removed from your developments. Each dismissal also adjusts
+              what Signal has learned about you.
             </p>
             <ul className="mt-3 divide-y divide-line">
               {dismissed.map((item) => (
@@ -79,7 +79,7 @@ export function SavedList() {
       {feedbackCount > 0 && (
         <p className="mt-6 max-w-4xl text-[11px] text-ink-faint">
           {feedbackCount} interaction{feedbackCount === 1 ? "" : "s"} recorded so far,
-          feeding the preference model in the sidebar.
+          feeding what Signal has learned (shown on the Topics page).
         </p>
       )}
     </div>

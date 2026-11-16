@@ -4,8 +4,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { env } from "@/lib/env";
 import { assessmentSchema } from "@/lib/ai/schema";
-import { SYSTEM_PROMPT, itemBlock, profileBlock } from "@/lib/ai/prompt";
-import type { AiAssessment, Publication, ResearchProfile } from "@/lib/types";
+import { SYSTEM_PROMPT, itemBlock, topicLabel, topicsBlock } from "@/lib/ai/prompt";
+import type { AiAssessment, MonitoringTopic, Publication } from "@/lib/types";
 
 let client: Anthropic | null = null;
 export function anthropic(): Anthropic {
@@ -16,12 +16,12 @@ export function anthropic(): Anthropic {
 const outputFormat = zodOutputFormat(assessmentSchema);
 
 /**
- * Request body for one evaluation, shared by the on-demand path and the
- * nightly batch so both judge items identically. Instructions, then the
- * researcher's profile, then the record: the first two are a stable prefix
+ * Request body for one evaluation, shared by the manual path and the
+ * scheduled batch so both judge items identically. Instructions, then the
+ * researcher's topics, then the record: the first two are a stable prefix
  * and are cached across every item evaluated for the same user.
  */
-export function evaluationParams(profile: ResearchProfile, pub: Publication) {
+export function evaluationParams(topics: MonitoringTopic[], pub: Publication) {
   return {
     model: env.model(),
     max_tokens: 16000,
@@ -29,7 +29,7 @@ export function evaluationParams(profile: ResearchProfile, pub: Publication) {
       { type: "text" as const, text: SYSTEM_PROMPT },
       {
         type: "text" as const,
-        text: profileBlock(profile),
+        text: topicsBlock(topics),
         cache_control: { type: "ephemeral" as const },
       },
     ],
@@ -44,12 +44,19 @@ export type EvaluationOutcome =
   | { ok: true; assessment: AiAssessment }
   | { ok: false; reason: string };
 
-/** Validate a finished model response into an assessment. */
-export function parseEvaluation(message: {
-  stop_reason: string | null;
-  model: string;
-  content: { type: string; text?: string }[];
-}): EvaluationOutcome {
+/**
+ * Validate a finished model response into an assessment. `topicIds` are the
+ * topics in the order they were labelled in the request (T1, T2, ...), so the
+ * model's label can be mapped back to a topic.
+ */
+export function parseEvaluation(
+  message: {
+    stop_reason: string | null;
+    model: string;
+    content: { type: string; text?: string }[];
+  },
+  topicIds: string[],
+): EvaluationOutcome {
   if (message.stop_reason === "refusal") return { ok: false, reason: "declined by model" };
   if (message.stop_reason === "max_tokens") return { ok: false, reason: "response truncated" };
   const text = message.content.find((b) => b.type === "text")?.text;
@@ -64,15 +71,20 @@ export function parseEvaluation(message: {
   const parsed = assessmentSchema.safeParse(json);
   if (!parsed.success) return { ok: false, reason: "response did not match schema" };
 
-  const a = parsed.data;
+  const { topic, ...a } = parsed.data;
   const dim = (d: { score: number; reason: string }) => ({
     score: clampScore(d.score),
     reason: d.reason,
   });
+  const topicIndex = topicIds.findIndex((_, i) => topicLabel(i) === topic.trim().toUpperCase());
   return {
     ok: true,
     assessment: {
       ...a,
+      // An unrecognised label leaves the topic unset; callers fall back to
+      // the topic the record was retrieved for.
+      topicId: topicIndex >= 0 ? topicIds[topicIndex] : undefined,
+      significance: { level: a.significance.level, reason: a.significance.reason },
       relevance: dim(a.relevance),
       novelty: dim(a.novelty),
       evidence: dim(a.evidence),
@@ -84,21 +96,24 @@ export function parseEvaluation(message: {
 }
 
 /**
- * Evaluate one item now. Used for on-demand briefings, where the user is
- * waiting. Server-side fallbacks let a refused request be retried on another
- * model inside the same call instead of failing the item.
+ * Evaluate one item now. Used for manual checks, where the user is waiting.
+ * Server-side fallbacks let a refused request be retried on another model
+ * inside the same call instead of failing the item.
  */
 export async function evaluateNow(
-  profile: ResearchProfile,
+  topics: MonitoringTopic[],
   pub: Publication,
 ): Promise<EvaluationOutcome> {
   try {
     const message = await anthropic().beta.messages.create({
-      ...evaluationParams(profile, pub),
+      ...evaluationParams(topics, pub),
       betas: ["server-side-fallback-2026-07-01"],
       fallbacks: "default",
     });
-    return parseEvaluation(message);
+    return parseEvaluation(
+      message,
+      topics.map((t) => t.id),
+    );
   } catch (error) {
     if (error instanceof Anthropic.RateLimitError) return { ok: false, reason: "rate limited" };
     if (error instanceof Anthropic.APIError) {

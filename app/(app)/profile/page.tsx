@@ -1,5 +1,6 @@
-import { ProfileEditor } from "@/components/profile/ProfileEditor";
+import { redirect } from "next/navigation";
 
+/** The single research profile became monitored topics. */
 export default function ProfilePage() {
-  return <ProfileEditor />;
+  redirect("/topics");
 }

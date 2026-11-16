@@ -15,13 +15,18 @@ import "server-only";
  */
 
 import type { Publication } from "@/lib/types";
-import { collapseWhitespace, fetchWithDeadline, teaser, type SourceResult } from "./http";
+import { collapseWhitespace, fetchWithDeadline, logSourceFailure, teaser, type SourceResult } from "./http";
 
 const API = "https://api.biorxiv.org/details";
 const DEFAULT_MAX_RECORDS = 2000;
 const MAX_AUTHORS = 12;
 /** Stop paging when less than this remains; leave room for downstream work. */
 const PAGE_MIN_REMAINING_MS = 1500;
+/**
+ * The details API is often slow: single pages have taken over 30s. Allow a
+ * page that long, within the caller's overall deadline.
+ */
+const PAGE_TIMEOUT_MS = 40_000;
 
 export type PreprintServer = "biorxiv" | "medrxiv";
 
@@ -117,10 +122,12 @@ export async function fetchPreprints(
       const res = await fetchWithDeadline(
         `${API}/${server}/${opts.from}/${opts.to}/${cursor}`,
         opts.deadline,
+        PAGE_TIMEOUT_MS,
       );
       if (!res.ok) throw new Error(`${server}: HTTP ${res.status}`);
       page = (await res.json()) as BiorxivPage;
-    } catch {
+    } catch (error) {
+      logSourceFailure(server, error);
       if (cursor === 0) return null;
       break; // keep what we already have
     }
@@ -138,5 +145,13 @@ export async function fetchPreprints(
   const publications = dedupeLatestVersions(records.slice(0, maxRecords)).map((r) =>
     mapPreprint(server, r),
   );
-  return { publications, scanned: Math.max(total, records.length) };
+  const complete = records.length >= total;
+  return {
+    publications,
+    scanned: Math.max(total, records.length),
+    complete,
+    note: complete
+      ? undefined
+      : `Read ${records.length} of ${total} preprints posted in the window before reaching the time or size limit.`,
+  };
 }

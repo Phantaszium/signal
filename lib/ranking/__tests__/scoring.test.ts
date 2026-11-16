@@ -1,88 +1,62 @@
 import { describe, expect, it } from "vitest";
 import { NEUTRAL_PREFERENCE_WEIGHTS } from "@/lib/data/profile";
-import { MAX_HIGH_ITEMS, prefilterScore, rankBriefing, rankEvaluated } from "@/lib/ranking/scoring";
-import type { AiAssessment, EvaluatedItem, Publication, ResearchProfile } from "@/lib/types";
-
-const profile: ResearchProfile = {
-  program: "KRAS G12D / NSCLC",
-  description: "",
-  keywords: ["KRAS G12D", "acquired resistance"],
-  genes: ["KRAS", "MET"],
-  diseases: ["lung adenocarcinoma"],
-  techniques: [],
-  organizations: ["Mirati/BMS"],
-};
-
-function pub(id: string, text: string, extra: Partial<Publication> = {}): Publication {
-  return {
-    id,
-    title: text,
-    source: "Test Journal",
-    publishedAt: "2026-11-05",
-    type: "journal",
-    authors: [],
-    summary: "",
-    abstract: "",
-    tags: [],
-    organizations: [],
-    origin: "pubmed",
-    ...extra,
-  };
-}
-
-function assessment(scores: { relevance: number; novelty?: number; evidence?: number; strategic?: number }): AiAssessment {
-  const d = (score: number) => ({ score, reason: `scored ${score}` });
-  return {
-    relevance: d(scores.relevance),
-    novelty: d(scores.novelty ?? 70),
-    evidence: d(scores.evidence ?? 70),
-    strategic: d(scores.strategic ?? 70),
-    whyThisMatters: "Because.",
-    summary: "AI summary",
-    plainEnglish: "Plain.",
-    keyFindings: [],
-    studyDesign: "",
-    modelSystem: "",
-    limitations: [],
-    authorsReport: [],
-    signalInterpretation: [],
-    signals: {
-      mechanistic: true,
-      inVitroOnly: false,
-      clinical: false,
-      negativeResult: false,
-      acquiredResistance: true,
-      cohortSize: null,
-    },
-    matchedInterests: ["KRAS"],
-    matchedOrganizations: [],
-    tags: ["KRAS"],
-    model: "test",
-    evaluatedAt: "2026-11-06T00:00:00Z",
-  };
-}
-
-const item = (id: string, relevance: number, rest = {}): EvaluatedItem => ({
-  publication: pub(id, `Paper ${id}`),
-  assessment: assessment({ relevance, ...rest }),
-  briefingId: "b1",
-});
+import { prefilterScore, rankEvaluated } from "@/lib/ranking/scoring";
+import { item, profile, pub } from "@/test/fixtures";
 
 describe("prefilterScore", () => {
   it("matches short gene symbols only on word boundaries", () => {
-    expect(prefilterScore(pub("a", "Metastatic methods in mice"), profile).matched).toEqual([]);
-    expect(prefilterScore(pub("b", "MET amplification drives escape"), profile).matched).toEqual(["MET"]);
+    expect(prefilterScore(pub("a", "Metastatic methods in mice"), profile()).matched).toEqual([]);
+    expect(prefilterScore(pub("b", "MET amplification drives escape"), profile()).matched).toEqual(["MET"]);
   });
 
   it("ranks program keywords above incidental gene mentions", () => {
-    const keyword = prefilterScore(pub("a", "Acquired resistance to KRAS G12D inhibitors"), profile);
-    const gene = prefilterScore(pub("b", "A KRAS survey"), profile);
+    const keyword = prefilterScore(pub("a", "Acquired resistance to KRAS G12D inhibitors"), profile());
+    const gene = prefilterScore(pub("b", "A KRAS survey"), profile());
     expect(keyword.score).toBeGreaterThan(gene.score);
   });
 
   it("matches either half of a slash-separated organisation", () => {
-    const r = prefilterScore(pub("a", "Trial", { organizations: ["Bristol Myers Squibb", "BMS"] }), profile);
+    const r = prefilterScore(pub("a", "Trial", { organizations: ["Bristol Myers Squibb", "BMS"] }), profile());
     expect(r.reasons.join(" ")).toContain("Mirati/BMS");
+  });
+
+  it("counts synonyms as keywords and organisms as core terms", () => {
+    const p = profile({ keywords: ["spectinomycin"], synonyms: ["Trobicin"], organisms: ["Vibrio natriegens"] });
+    expect(prefilterScore(pub("a", "Trobicin uptake"), p, "balanced").passes).toBe(true);
+    expect(prefilterScore(pub("b", "Growth of Vibrio natriegens"), p, "balanced").passes).toBe(true);
+  });
+
+  describe("sensitivity", () => {
+    // Like the STI-clinic papers in the first empty briefing, which shared
+    // only the disease name with the profile.
+    const disease = pub("d", "Screening outcomes in lung adenocarcinoma clinics");
+    const keyword = pub("k", "KRAS G12D tumours");
+    const keywordPlus = pub("kp", "KRAS G12D tumours in lung adenocarcinoma");
+
+    it("broad passes any single profile term except a technique", () => {
+      expect(prefilterScore(disease, profile(), "broad").passes).toBe(true);
+      expect(prefilterScore(pub("t", "Uses CRISPR"), profile({ techniques: ["CRISPR"] }), "broad").passes).toBe(false);
+    });
+
+    it("balanced needs a keyword, gene or organism; a shared disease alone is not enough", () => {
+      expect(prefilterScore(disease, profile(), "balanced").passes).toBe(false);
+      expect(prefilterScore(keyword, profile(), "balanced").passes).toBe(true);
+    });
+
+    it("strict needs a core term plus a second term", () => {
+      expect(prefilterScore(pub("k2", "KRAS G12D"), profile({ genes: [] }), "strict").passes).toBe(false);
+      expect(prefilterScore(keywordPlus, profile(), "strict").passes).toBe(true);
+    });
+  });
+
+  it("excludes records mentioning an exclusion term, whatever else they match", () => {
+    const r = prefilterScore(
+      pub("x", "KRAS G12D in colorectal cancer"),
+      profile({ exclusions: ["colorectal cancer"] }),
+      "broad",
+    );
+    expect(r.passes).toBe(false);
+    expect(r.excludedBy).toBe("colorectal cancer");
   });
 });
 
@@ -98,25 +72,5 @@ describe("rankEvaluated", () => {
     const low = rankEvaluated(item("x", 80), { ...NEUTRAL_PREFERENCE_WEIGHTS, mechanistic: 0.15 });
     const high = rankEvaluated(item("x", 80), { ...NEUTRAL_PREFERENCE_WEIGHTS, mechanistic: 0.95 });
     expect(high.signalScore).toBeGreaterThan(low.signalScore);
-  });
-});
-
-describe("rankBriefing", () => {
-  it("drops items below the relevance floor and dismissed items", () => {
-    const r = rankBriefing(
-      [item("keep", 80), item("low", 20), item("gone", 95)],
-      NEUTRAL_PREFERENCE_WEIGHTS,
-      new Set(["gone"]),
-    );
-    expect(r.relevant.map((s) => s.publication.id)).toEqual(["keep"]);
-  });
-
-  it("caps the HIGH tier", () => {
-    const items = Array.from({ length: 6 }, (_, i) =>
-      item(`p${i}`, 99, { novelty: 99, evidence: 99, strategic: 99 }),
-    );
-    const r = rankBriefing(items, { ...NEUTRAL_PREFERENCE_WEIGHTS, mechanistic: 0.98, acquiredResistance: 0.98 });
-    expect(r.high).toHaveLength(MAX_HIGH_ITEMS);
-    expect(r.notable.length + r.context.length).toBe(3);
   });
 });

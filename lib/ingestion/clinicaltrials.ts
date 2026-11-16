@@ -13,8 +13,15 @@ import "server-only";
  * Failures never throw; they return null.
  */
 
-import type { Publication, ResearchProfile } from "@/lib/types";
-import { collapseWhitespace, fetchWithDeadline, teaser, type SourceResult } from "./http";
+import type { Publication } from "@/lib/types";
+import {
+  collapseWhitespace,
+  fetchWithDeadline,
+  logSourceFailure,
+  teaser,
+  type QueryTerms,
+  type SourceResult,
+} from "./http";
 
 const API = "https://clinicaltrials.gov/api/v2/studies";
 const DEFAULT_LIMIT = 50;
@@ -60,9 +67,15 @@ function quoteTerm(term: string): string {
   return /\s/.test(t) ? `"${t}"` : t;
 }
 
-/** Turn a research profile into a ClinicalTrials.gov `query.term` expression. */
-export function buildTrialQuery(profile: ResearchProfile): string {
-  const terms = [...profile.keywords, ...profile.genes.slice(0, 5), ...profile.diseases]
+/** Turn a topic into a ClinicalTrials.gov `query.term` expression. */
+export function buildTrialQuery(profile: QueryTerms): string {
+  const terms = [
+    ...profile.keywords,
+    ...(profile.synonyms ?? []),
+    ...profile.genes.slice(0, 5),
+    ...(profile.organisms ?? []),
+    ...profile.diseases,
+  ]
     .map((t) => t?.trim())
     .filter((t): t is string => Boolean(t));
   const seen = new Set<string>();
@@ -157,7 +170,7 @@ export function mapTrial(study: CtStudy): Publication | null {
 
 /** Fetch trials matching the profile whose record was updated between `from` and `to`. */
 export async function fetchTrials(
-  profile: ResearchProfile,
+  profile: QueryTerms,
   opts: { from: string; to: string; deadline: number; limit?: number },
 ): Promise<SourceResult | null> {
   try {
@@ -171,14 +184,25 @@ export async function fetchTrials(
       format: "json",
     });
     const res = await fetchWithDeadline(`${API}?${params}`, opts.deadline);
-    if (!res.ok) return null;
+    if (!res.ok) {
+      logSourceFailure("clinicaltrials", `HTTP ${res.status}`);
+      return null;
+    }
     const json = (await res.json()) as CtResponse;
     const studies = json.studies ?? [];
     const publications = studies
       .map(mapTrial)
       .filter((p): p is Publication => p !== null);
-    return { publications, scanned: json.totalCount ?? studies.length };
-  } catch {
+    const scanned = json.totalCount ?? studies.length;
+    const complete = scanned <= studies.length;
+    return {
+      publications,
+      scanned,
+      complete,
+      note: complete ? undefined : `Read ${studies.length} of ${scanned} updated trial records.`,
+    };
+  } catch (error) {
+    logSourceFailure("clinicaltrials", error);
     return null;
   }
 }

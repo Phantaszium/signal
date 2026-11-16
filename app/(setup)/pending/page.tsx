@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { requireAccount } from "@/lib/auth/session";
+import { currentTopics, requireAccount } from "@/lib/auth/session";
 
 export const metadata = { title: "Waitlist · Signal" };
 
 export default async function PendingPage() {
   const account = await requireAccount();
   if (account.approved) redirect("/");
+  const hasTopic = (await currentTopics(account.id)).length > 0;
   return (
     <div className="max-w-xl">
       <h1 className="text-[24px] font-semibold tracking-[-0.02em] text-ink">
@@ -17,13 +18,13 @@ export default async function PendingPage() {
         hasn&rsquo;t been invited yet. You&rsquo;ll get access as soon as it&rsquo;s approved;
         there&rsquo;s nothing else you need to do.
       </p>
-      {!account.researchProfile && (
+      {!hasTopic && (
         <p className="mt-4 text-[13px] leading-relaxed text-ink-muted">
           In the meantime you can{" "}
           <Link href="/onboarding" className="font-medium text-accent hover:underline">
-            set up your research profile
+            set up your first monitored topic
           </Link>
-          , so your first briefing is ready the moment you&rsquo;re in.
+          , so monitoring starts the moment you&rsquo;re in.
         </p>
       )}
     </div>

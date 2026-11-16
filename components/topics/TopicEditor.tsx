@@ -1,0 +1,64 @@
+"use client";
+
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { EMPTY_TOPIC, TopicForm, type TopicDraft } from "@/components/topics/TopicForm";
+import { EXAMPLE_PROFILE } from "@/lib/data/profile";
+import { useSignal } from "@/lib/store/SignalProvider";
+
+/** /topics/new and /topics/[id]. */
+export function TopicEditor({ id }: { id: string | null }) {
+  const { topics } = useSignal();
+  const router = useRouter();
+  const topic = id ? topics.find((t) => t.id === id) : undefined;
+
+  if (id && !topic) {
+    return (
+      <div className="px-6 py-16 text-center lg:px-10">
+        <p className="text-[15px] font-medium text-ink">Topic not found</p>
+        <Link href="/topics" className="mt-3 inline-block text-[13px] font-medium text-accent hover:underline">
+          ← All topics
+        </Link>
+      </div>
+    );
+  }
+
+  const initial: TopicDraft = topic
+    ? { profile: topic.profile, sensitivity: topic.sensitivity, sources: topic.sources, active: topic.active }
+    : EMPTY_TOPIC;
+
+  return (
+    <div className="px-4 py-6 sm:px-6 lg:px-10 lg:py-9">
+      <Link href="/topics" className="text-[12px] font-medium text-ink-muted hover:text-accent">
+        ← Topics
+      </Link>
+      <header className="mt-3 max-w-3xl">
+        <h1 className="text-[22px] font-semibold tracking-[-0.02em] text-ink">
+          {topic ? topic.profile.program : "New topic"}
+        </h1>
+        <p className="mt-1 text-[13px] leading-relaxed text-ink-muted">
+          {topic
+            ? "Changes apply from the next check."
+            : "A topic is one research question you want watched. Its first check reads the last 30 days; after that, Signal checks it every morning."}
+        </p>
+      </header>
+      <div className="mt-6 max-w-3xl">
+        <TopicForm
+          id={id}
+          initial={initial}
+          example={topic ? undefined : EXAMPLE_PROFILE}
+          submitLabel={topic ? "Save topic" : "Create topic"}
+          canDelete={Boolean(topic) && topics.length > 1}
+          onSaved={(savedId) => {
+            if (!topic) router.push(`/topics/${savedId}`);
+            router.refresh();
+          }}
+          onDeleted={() => {
+            router.push("/topics");
+            router.refresh();
+          }}
+        />
+      </div>
+    </div>
+  );
+}

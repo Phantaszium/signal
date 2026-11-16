@@ -3,11 +3,13 @@
  *
  * Everything in the app flows through these three shapes:
  *   ResearchProfile  — what the scientist cares about
- *   Publication      — a normalized item from any source (seed, PubMed, ...)
+ *   Publication      — a normalized item from any source (PubMed, bioRxiv, ...)
  *   ScoredPublication — a Publication plus transparent ranking output
  */
 
 export type PublicationType = "journal" | "preprint" | "trial" | "regulatory";
+
+export type PublicationOrigin = "pubmed" | "biorxiv" | "medrxiv" | "clinicaltrials";
 
 export type Tier = "HIGH" | "NOTABLE" | "CONTEXT";
 
@@ -27,12 +29,12 @@ export interface Publication {
   tags: string[];
   /** Organizations named in or responsible for the work. */
   organizations: string[];
-  /** Provenance: "seed" items are fictional demo data; "pubmed" items are real. */
-  origin: "seed" | "pubmed";
+  /** Which feed the record came from. */
+  origin: PublicationOrigin;
   url?: string;
   doi?: string;
 
-  // --- Structured detail used by the item detail page (seed data only) ---
+  // --- Structured detail for the item detail page, written by the AI assessment ---
   keyFindings?: string[];
   studyDesign?: string;
   modelSystem?: string;
@@ -42,13 +44,11 @@ export interface Publication {
   /** Signal's inference — explicitly NOT attributed to the authors. */
   signalInterpretation?: string[];
   /**
-   * The "so what" for this researcher, in one clause. The explain module
-   * frames it; the corpus supplies the domain content. Optional — items
-   * without one (e.g. live PubMed results) fall back to a generated clause.
+   * Plain-English explanation of the work for a non-specialist teammate.
    */
-  implication?: string;
+  plainEnglish?: string;
 
-  // --- Ranking hints. Not scores; inputs to the scoring module. ---
+  // --- Ranking hints extracted by the AI assessment. Inputs to the preference model. ---
   signals?: PublicationSignals;
 }
 
@@ -70,12 +70,6 @@ export interface PublicationSignals {
   acquiredResistance?: boolean;
   /** Approximate cohort or sample size, where meaningful. */
   cohortSize?: number;
-  /** 0–100 hand-set novelty prior from ingestion (how new the claim is). */
-  noveltyPrior?: number;
-  /** 0–100 competitive/market importance prior. */
-  strategicPrior?: number;
-  /** Peer-review / replication status shorthand. */
-  replication?: "none" | "internal" | "independent";
 }
 
 /** The five transparent ranking dimensions. */
@@ -162,7 +156,45 @@ export interface Briefing {
   high: ScoredPublication[];
   notable: ScoredPublication[];
   context: ScoredPublication[];
-  /** Where the items came from, surfaced honestly in the UI. */
-  sourceMode: "seed" | "pubmed+seed" | "pubmed";
   sourceNote: string;
+}
+
+/** One dimension of the model's judgement, with the reason that drove it. */
+export interface AssessedDimension {
+  score: number;
+  reason: string;
+}
+
+/**
+ * What the AI returns for one publication against one researcher's profile.
+ * Stored as JSON on the evaluation row; combined with the learned preference
+ * weights at read time to produce a ScoredPublication.
+ */
+export interface AiAssessment {
+  relevance: AssessedDimension;
+  novelty: AssessedDimension;
+  evidence: AssessedDimension;
+  strategic: AssessedDimension;
+  whyThisMatters: string;
+  summary: string;
+  plainEnglish: string;
+  keyFindings: string[];
+  studyDesign: string;
+  modelSystem: string;
+  limitations: string[];
+  authorsReport: string[];
+  signalInterpretation: string[];
+  signals: Required<Omit<PublicationSignals, "cohortSize">> & { cohortSize: number | null };
+  matchedInterests: string[];
+  matchedOrganizations: string[];
+  tags: string[];
+  model: string;
+  evaluatedAt: string;
+}
+
+/** A publication with its stored assessment, as loaded for one user. */
+export interface EvaluatedItem {
+  publication: Publication;
+  assessment: AiAssessment;
+  briefingId: string | null;
 }

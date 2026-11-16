@@ -31,7 +31,7 @@ function Section({
 }
 
 export function BriefingFeed() {
-  const { briefing, dismissedIds } = useSignal();
+  const { briefing, dismissedIds, hasBriefing, running } = useSignal();
   const today = new Date().toLocaleDateString("en-US", {
     weekday: "long",
     month: "long",
@@ -53,7 +53,7 @@ export function BriefingFeed() {
         </div>
 
         <div className="mt-5">
-          <FunnelHeadline funnel={briefing.funnel} />
+          {hasBriefing && <FunnelHeadline funnel={briefing.funnel} />}
         </div>
 
         <p className="mt-3 text-[12px] leading-relaxed text-ink-faint">
@@ -65,21 +65,36 @@ export function BriefingFeed() {
           <GenerateBriefing />
         </div>
 
+        {running?.mode === "nightly" && (
+          <p className="mt-3 text-[12px] text-ink-muted">
+            This morning&rsquo;s briefing is being assessed now. It will appear here, and in
+            your inbox, when it is ready.
+          </p>
+        )}
+
         {dismissedIds.length > 0 && (
           <p className="mt-3 text-[11px] text-ink-faint">
-            {dismissedIds.length} item
-            {dismissedIds.length === 1 ? "" : "s"} marked not relevant this
-            session — removed from the briefing and fed back into your
-            preference model.
+            {dismissedIds.length} item{dismissedIds.length === 1 ? "" : "s"} marked not
+            relevant — removed from the briefing and fed back into your preference model.
           </p>
         )}
       </header>
 
-      <div className="mt-9 max-w-4xl">
-        <Section tier="HIGH" items={briefing.high} />
-        <Section tier="NOTABLE" items={briefing.notable} />
-        <Section tier="CONTEXT" items={briefing.context} />
-      </div>
+      {hasBriefing ? (
+        <div className="mt-9 max-w-4xl">
+          <Section tier="HIGH" items={briefing.high} />
+          <Section tier="NOTABLE" items={briefing.notable} />
+          <Section tier="CONTEXT" items={briefing.context} />
+        </div>
+      ) : (
+        <div className="mt-9 max-w-4xl rounded-md border border-dashed border-line px-6 py-10 text-center">
+          <p className="text-[14px] font-medium text-ink">No briefing yet</p>
+          <p className="mx-auto mt-1 max-w-md text-[13px] leading-relaxed text-ink-muted">
+            Build your first one now from the past week of literature, or wait for
+            tomorrow morning&rsquo;s sweep.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

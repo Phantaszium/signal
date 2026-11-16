@@ -1,241 +1,199 @@
 "use client";
 
 /**
- * Single client-side store for profile, preferences and feedback.
+ * Client store for the signed-in app.
  *
- * Ranking runs here rather than on the server so that feedback re-ranks the
- * briefing immediately — that live response is the point of the demo.
+ * The server layout loads the account's latest briefing, assessments and
+ * feedback state; this provider ranks them against the learned preference
+ * weights. Feedback is applied optimistically so the briefing re-ranks
+ * immediately, then reconciled with the server's answer.
  */
 
 import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
   useState,
+  useTransition,
 } from "react";
-import {
-  DEFAULT_PREFERENCE_WEIGHTS,
-  DEFAULT_PROFILE,
-} from "@/lib/data/profile";
-import { SEED_PUBLICATIONS } from "@/lib/data/seed-papers";
+import { useRouter } from "next/navigation";
+import { recordFeedbackAction } from "@/app/(app)/actions";
 import { applyFeedback, deriveLearnedPreferences } from "@/lib/preferences/model";
-import { buildWhyThisMatters } from "@/lib/ranking/explain";
-import {
-  MAX_HIGH_ITEMS,
-  RELEVANCE_FLOOR,
-  scorePublication,
-} from "@/lib/ranking/scoring";
-import { DEMO_SCAN_VOLUME } from "@/lib/constants";
-import { localRepository, type SignalState } from "@/lib/store/persistence";
+import { rankBriefing, rankEvaluated } from "@/lib/ranking/scoring";
+import type { AppState } from "@/lib/store/app-state";
 import type {
   Briefing,
   FeedbackAction,
   LearnedPreference,
-  Publication,
-  ResearchProfile,
+  PreferenceWeights,
   ScoredPublication,
 } from "@/lib/types";
 
-interface SignalContextValue extends SignalState {
+interface SignalContextValue {
+  account: AppState["account"];
+  profile: AppState["profile"];
+  weights: PreferenceWeights;
   learned: LearnedPreference[];
-  /** Every candidate, ranked — the briefing is a view over this. */
-  ranked: ScoredPublication[];
   briefing: Briefing;
+  hasBriefing: boolean;
+  running: AppState["running"];
+  lastFailure: string | null;
+  briefingMeta: AppState["briefing"];
+  savedIds: string[];
+  dismissedIds: string[];
   savedItems: ScoredPublication[];
-  /** Live PubMed items merged in by "Generate Today's Briefing". */
-  liveItems: Publication[];
-  lastGeneratedAt: string | null;
-  sourceNote: string;
+  /** Every loaded item, ranked: the latest briefing plus saved items. */
+  allItems: ScoredPublication[];
+  feedbackCount: number;
   recordFeedback: (publicationId: string, action: FeedbackAction) => void;
-  updateProfile: (profile: ResearchProfile) => void;
-  ingestLive: (items: Publication[], note: string, scanVolume: number) => void;
-  resetAll: () => void;
   getScored: (id: string) => ScoredPublication | undefined;
 }
 
 const SignalContext = createContext<SignalContextValue | null>(null);
 
-const DEFAULT_SOURCE_NOTE =
-  "Demo corpus — fictional but scientifically plausible records.";
+function sourceNote(meta: AppState["briefing"]): string {
+  if (!meta) return "No briefing yet.";
+  const when = new Date(meta.createdAt).toLocaleString("en-US", {
+    weekday: "short",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  const sources = [
+    ["PubMed", meta.sourceCounts.pubmed],
+    ["bioRxiv", meta.sourceCounts.biorxiv],
+    ["medRxiv", meta.sourceCounts.medrxiv],
+    ["ClinicalTrials.gov", meta.sourceCounts.clinicaltrials],
+  ]
+    .filter(([, n]) => typeof n === "number")
+    .map(([name]) => name)
+    .join(", ");
+  const kind = meta.mode === "nightly" ? "Overnight sweep" : "On-demand briefing";
+  return `${kind}, ${when}${sources ? ` · ${sources}` : ""}`;
+}
 
-const INITIAL_STATE: SignalState = {
-  profile: DEFAULT_PROFILE,
-  weights: DEFAULT_PREFERENCE_WEIGHTS,
-  feedback: [],
-  savedIds: [],
-  dismissedIds: [],
-};
+export function SignalProvider({
+  initial,
+  children,
+}: {
+  initial: AppState;
+  children: React.ReactNode;
+}) {
+  const [weights, setWeights] = useState(initial.weights);
+  const [savedIds, setSavedIds] = useState(initial.savedIds);
+  const [dismissedIds, setDismissedIds] = useState(initial.dismissedIds);
+  const [feedbackCount, setFeedbackCount] = useState(initial.feedbackCount);
+  const [, startTransition] = useTransition();
+  const router = useRouter();
 
-export function SignalProvider({ children }: { children: React.ReactNode }) {
-  const [state, setState] = useState<SignalState>(INITIAL_STATE);
-  const [hydrated, setHydrated] = useState(false);
-  const [liveItems, setLiveItems] = useState<Publication[]>([]);
-  const [scanVolume, setScanVolume] = useState(DEMO_SCAN_VOLUME);
-  const [lastGeneratedAt, setLastGeneratedAt] = useState<string | null>(null);
-  const [sourceNote, setSourceNote] = useState(DEFAULT_SOURCE_NOTE);
+  // A new server snapshot (after router.refresh or navigation) replaces the
+  // local copy. React's "adjust state during render" pattern.
+  const [synced, setSynced] = useState(initial);
+  if (synced !== initial) {
+    setSynced(initial);
+    setWeights(initial.weights);
+    setSavedIds(initial.savedIds);
+    setDismissedIds(initial.dismissedIds);
+    setFeedbackCount(initial.feedbackCount);
+  }
 
-  // Hydrate from localStorage after mount. This has to be an effect: reading
-  // storage during render would produce a server/client markup mismatch.
-  useEffect(() => {
-    const stored = localRepository.load();
-    const ingestion = localRepository.loadIngestion();
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time hydration from an external store
-    if (stored) setState({ ...INITIAL_STATE, ...stored });
-    if (ingestion) {
-      setLiveItems(ingestion.items);
-      setScanVolume(ingestion.scanVolume);
-      setSourceNote(ingestion.sourceNote);
-      setLastGeneratedAt(ingestion.generatedAt);
-    }
-    setHydrated(true);
-  }, []);
-
-  useEffect(() => {
-    if (hydrated) localRepository.save(state);
-  }, [state, hydrated]);
-
-  const corpus = useMemo<Publication[]>(() => {
-    if (!liveItems.length) return SEED_PUBLICATIONS;
-    const seen = new Set(SEED_PUBLICATIONS.map((p) => p.id));
-    return [...liveItems.filter((p) => !seen.has(p.id)), ...SEED_PUBLICATIONS];
-  }, [liveItems]);
-
-  const ranked = useMemo(() => {
-    return corpus
-      .map((pub) => {
-        const scored = scorePublication(pub, {
-          profile: state.profile,
-          weights: state.weights,
-        });
-        return { ...scored, whyThisMatters: buildWhyThisMatters(scored, state.profile) };
-      })
-      .sort((a, b) => b.signalScore - a.signalScore);
-  }, [corpus, state.profile, state.weights]);
+  const briefingItems = useMemo(
+    () =>
+      initial.briefing
+        ? initial.items.filter((i) => i.briefingId === initial.briefing!.id)
+        : [],
+    [initial.items, initial.briefing],
+  );
 
   const briefing = useMemo<Briefing>(() => {
-    const dismissed = new Set(state.dismissedIds);
-    const relevant = ranked.filter(
-      (s) =>
-        !dismissed.has(s.publication.id) &&
-        s.scores.researchRelevance >= RELEVANCE_FLOOR,
-    );
-    const high = relevant.slice(0, MAX_HIGH_ITEMS).filter((s) => s.tier === "HIGH");
-    const highIds = new Set(high.map((s) => s.publication.id));
-    const rest = relevant.filter((s) => !highIds.has(s.publication.id));
-
+    const ranked = rankBriefing(briefingItems, weights, new Set(dismissedIds));
     return {
-      generatedAt: lastGeneratedAt ?? new Date(0).toISOString(),
+      generatedAt: initial.briefing?.createdAt ?? new Date(0).toISOString(),
       funnel: {
-        ingested: scanVolume,
-        likelyRelevant: relevant.length,
-        important: high.length,
+        ingested: initial.briefing?.scanned ?? 0,
+        likelyRelevant: ranked.relevant.length,
+        important: ranked.high.length,
       },
-      high,
-      notable: rest.filter((s) => s.tier !== "CONTEXT"),
-      context: rest.filter((s) => s.tier === "CONTEXT"),
-      sourceMode: liveItems.length ? "pubmed+seed" : "seed",
-      sourceNote,
+      high: ranked.high,
+      notable: ranked.notable,
+      context: ranked.context,
+      sourceNote: sourceNote(initial.briefing),
     };
-  }, [ranked, state.dismissedIds, scanVolume, lastGeneratedAt, liveItems.length, sourceNote]);
+  }, [briefingItems, weights, dismissedIds, initial.briefing]);
+
+  const getScored = useCallback(
+    (id: string) => {
+      const item = initial.items.find((i) => i.publication.id === id);
+      return item ? rankEvaluated(item, weights) : undefined;
+    },
+    [initial.items, weights],
+  );
 
   const recordFeedback = useCallback(
     (publicationId: string, action: FeedbackAction) => {
-      setState((prev) => {
-        const pub = [...SEED_PUBLICATIONS, ...liveItems].find(
-          (p) => p.id === publicationId,
+      // Optimistic: re-rank now, reconcile when the server answers. Items
+      // opened from an older briefing are not in the store, so for those only
+      // the server's answer updates the weights.
+      const item = initial.items.find((i) => i.publication.id === publicationId);
+      if (item) {
+        setWeights((w) => applyFeedback(w, rankEvaluated(item, w).publication, action));
+      }
+      if (action === "save") {
+        setSavedIds((ids) =>
+          ids.includes(publicationId) ? ids.filter((x) => x !== publicationId) : [...ids, publicationId],
         );
-        if (!pub) return prev;
+      }
+      if (action === "not_relevant") {
+        setDismissedIds((ids) =>
+          ids.includes(publicationId) ? ids.filter((x) => x !== publicationId) : [...ids, publicationId],
+        );
+      }
+      setFeedbackCount((n) => n + 1);
 
-        const savedIds =
-          action === "save"
-            ? prev.savedIds.includes(publicationId)
-              ? prev.savedIds.filter((id) => id !== publicationId)
-              : [...prev.savedIds, publicationId]
-            : prev.savedIds;
-
-        const dismissedIds =
-          action === "not_relevant"
-            ? prev.dismissedIds.includes(publicationId)
-              ? prev.dismissedIds.filter((id) => id !== publicationId)
-              : [...prev.dismissedIds, publicationId]
-            : prev.dismissedIds;
-
-        return {
-          ...prev,
-          weights: applyFeedback(prev.weights, pub, action),
-          savedIds,
-          dismissedIds,
-          feedback: [
-            { publicationId, action, at: new Date().toISOString() },
-            ...prev.feedback,
-          ].slice(0, 200),
-        };
+      startTransition(async () => {
+        const result = await recordFeedbackAction(publicationId, action);
+        if (!result) return;
+        // Items from older briefings are not in this snapshot; reload it so
+        // pages like /saved pick them up.
+        if (!item) router.refresh();
+        setWeights(result.weights);
+        setSavedIds((ids) => {
+          const rest = ids.filter((x) => x !== publicationId);
+          return result.saved ? [...rest, publicationId] : rest;
+        });
+        setDismissedIds((ids) => {
+          const rest = ids.filter((x) => x !== publicationId);
+          return result.dismissed ? [...rest, publicationId] : rest;
+        });
       });
     },
-    [liveItems],
+    [initial.items, router],
   );
-
-  const updateProfile = useCallback((profile: ResearchProfile) => {
-    setState((prev) => ({ ...prev, profile }));
-  }, []);
-
-  const ingestLive = useCallback(
-    (items: Publication[], note: string, volume: number) => {
-      const generatedAt = new Date().toISOString();
-      setLiveItems(items);
-      setSourceNote(note);
-      setScanVolume(volume);
-      setLastGeneratedAt(generatedAt);
-      // Cached so a reload, or opening a live item by URL, still resolves.
-      localRepository.saveIngestion({
-        items,
-        scanVolume: volume,
-        sourceNote: note,
-        generatedAt,
-      });
-    },
-    [],
-  );
-
-  const resetAll = useCallback(() => {
-    localRepository.clear();
-    setState(INITIAL_STATE);
-    setLiveItems([]);
-    setScanVolume(DEMO_SCAN_VOLUME);
-    setLastGeneratedAt(null);
-    setSourceNote(DEFAULT_SOURCE_NOTE);
-  }, []);
 
   const value = useMemo<SignalContextValue>(
     () => ({
-      ...state,
-      learned: deriveLearnedPreferences(state.weights),
-      ranked,
+      account: initial.account,
+      profile: initial.profile,
+      weights,
+      learned: deriveLearnedPreferences(weights),
       briefing,
-      savedItems: ranked.filter((s) => state.savedIds.includes(s.publication.id)),
-      liveItems,
-      lastGeneratedAt,
-      sourceNote,
+      hasBriefing: Boolean(initial.briefing),
+      running: initial.running,
+      lastFailure: initial.lastFailure,
+      briefingMeta: initial.briefing,
+      savedIds,
+      dismissedIds,
+      savedItems: initial.items
+        .filter((i) => savedIds.includes(i.publication.id))
+        .map((i) => rankEvaluated(i, weights)),
+      allItems: initial.items
+        .map((i) => rankEvaluated(i, weights))
+        .sort((a, b) => b.signalScore - a.signalScore),
+      feedbackCount,
       recordFeedback,
-      updateProfile,
-      ingestLive,
-      resetAll,
-      getScored: (id: string) => ranked.find((s) => s.publication.id === id),
+      getScored,
     }),
-    [
-      state,
-      ranked,
-      briefing,
-      liveItems,
-      lastGeneratedAt,
-      sourceNote,
-      recordFeedback,
-      updateProfile,
-      ingestLive,
-      resetAll,
-    ],
+    [initial, weights, briefing, savedIds, dismissedIds, feedbackCount, recordFeedback, getScored],
   );
 
   return <SignalContext.Provider value={value}>{children}</SignalContext.Provider>;

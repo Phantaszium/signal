@@ -10,6 +10,7 @@ import {
   cx,
   formatDate,
 } from "@/components/ui/primitives";
+import { ORIGIN_LABEL } from "@/components/ui/primitives";
 import type { ScoredPublication } from "@/lib/types";
 
 function authorLine(authors: string[]) {
@@ -43,15 +44,9 @@ export function PaperCard({ item }: { item: ScoredPublication }) {
             <span className="font-medium text-ink-muted">{pub.source}</span>
             <span aria-hidden>·</span>
             <time dateTime={pub.publishedAt}>{formatDate(pub.publishedAt)}</time>
-            {pub.origin === "seed" ? (
-              <Chip tone="quiet" title="Fictional record created for this demo">
-                Demo
-              </Chip>
-            ) : (
-              <Chip tone="accent" title="Retrieved live from PubMed">
-                PubMed
-              </Chip>
-            )}
+            {pub.origin !== "pubmed" && pub.origin !== "clinicaltrials" ? (
+              <Chip tone="accent">{ORIGIN_LABEL[pub.origin]}</Chip>
+            ) : null}
           </div>
 
           {/* Title */}
@@ -62,7 +57,7 @@ export function PaperCard({ item }: { item: ScoredPublication }) {
             )}
           >
             <Link
-              href={`/paper/${pub.id}`}
+              href={`/paper/${encodeURIComponent(pub.id)}`}
               className="hover:text-accent hover:underline decoration-1 underline-offset-2"
             >
               {pub.title}
@@ -147,7 +142,7 @@ export function PaperCard({ item }: { item: ScoredPublication }) {
                 {dismissed ? "Dismissed" : "Not relevant"}
               </Button>
               <Link
-                href={`/paper/${pub.id}`}
+                href={`/paper/${encodeURIComponent(pub.id)}`}
                 onClick={() => recordFeedback(pub.id, "read")}
                 className="inline-flex items-center rounded border border-accent bg-accent px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-[#105066]"
               >

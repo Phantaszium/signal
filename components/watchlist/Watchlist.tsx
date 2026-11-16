@@ -58,7 +58,7 @@ function WatchTable({ rows, emptyLabel }: { rows: WatchRow[]; emptyLabel: string
               <p className="mt-1 text-[12px] leading-snug text-ink-muted">
                 Most recent:{" "}
                 <Link
-                  href={`/paper/${top.publication.id}`}
+                  href={`/paper/${encodeURIComponent(top.publication.id)}`}
                   className="text-accent hover:underline"
                 >
                   {top.publication.title}
@@ -69,7 +69,7 @@ function WatchTable({ rows, emptyLabel }: { rows: WatchRow[]; emptyLabel: string
               </p>
             ) : (
               <p className="mt-1 text-[12px] text-ink-faint">
-                No matching items in the current corpus.
+                No matching items in your latest briefing.
               </p>
             )}
           </li>
@@ -80,16 +80,16 @@ function WatchTable({ rows, emptyLabel }: { rows: WatchRow[]; emptyLabel: string
 }
 
 export function Watchlist() {
-  const { profile, ranked } = useSignal();
+  const { profile, allItems } = useSignal();
 
   const sorted = useMemo(
     () =>
-      [...ranked].sort(
+      [...allItems].sort(
         (a, b) =>
           new Date(b.publication.publishedAt).getTime() -
           new Date(a.publication.publishedAt).getTime(),
       ),
-    [ranked],
+    [allItems],
   );
 
   const topics = buildRows([...profile.keywords, ...profile.genes.slice(0, 4)], sorted);
@@ -102,8 +102,9 @@ export function Watchlist() {
           Watchlist
         </h1>
         <p className="mt-1 text-[13px] leading-relaxed text-ink-muted">
-          Topics and organizations Signal monitors on your behalf, with how much
-          each one moved in the current corpus. Edit these on your{" "}
+          Topics and organizations Signal monitors on your behalf, with how many
+          items in your latest briefing and saved list touch each one. Edit these
+          on your{" "}
           <Link href="/profile" className="text-accent hover:underline">
             research profile
           </Link>

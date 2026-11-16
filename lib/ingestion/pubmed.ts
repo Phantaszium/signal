@@ -4,52 +4,21 @@ import "server-only";
  * PubMed / NCBI E-utilities ingestion.
  *
  * No API key is required; a key (NCBI_API_KEY) only raises the rate limit.
- * Every failure path returns an empty array so the pipeline can fall back to
- * the seed corpus without the demo ever breaking.
+ * Every failure path returns null so one slow source never sinks a briefing.
  */
 
-import type { Publication, PublicationSignals, ResearchProfile } from "@/lib/types";
+import { fetchWithDeadline, type SourceResult } from "@/lib/ingestion/http";
+import type { Publication, ResearchProfile } from "@/lib/types";
 
 const EUTILS = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils";
 
-/**
- * Timeouts are budgeted for a serverless host, not a laptop.
- *
- * One ingestion makes three sequential NCBI calls (esearch → esummary →
- * efetch). A per-call timeout alone is not enough: three slow calls would
- * exceed the platform's function duration limit and return a gateway error
- * instead of falling back to the seed corpus. So the whole operation shares a
- * single deadline, and any call that would run past it is abandoned in favour
- * of the seeded demo data.
- */
-const TOTAL_BUDGET_MS = 7000;
-const PER_CALL_TIMEOUT_MS = 4000;
-/** Below this, there is not enough time left for a request to be useful. */
-const MIN_USEFUL_MS = 300;
-
-/** Turn a research profile into a PubMed boolean query. */
-export function buildQuery(profile: ResearchProfile): string {
-  const terms = [...profile.keywords, ...profile.genes.slice(0, 3)]
-    .map((t) => `"${t}"[Title/Abstract]`)
+/** Turn a research profile into a PubMed boolean query over an entry-date window. */
+export function buildQuery(profile: ResearchProfile, from: string, to: string): string {
+  const terms = [...profile.keywords, ...profile.genes.slice(0, 5), ...profile.diseases.slice(0, 3)]
+    .map((t) => `"${t.replace(/"/g, "")}"[Title/Abstract]`)
     .join(" OR ");
-  return `(${terms}) AND ("last 30 days"[dp])`;
-}
-
-async function fetchWithTimeout(url: string, deadline: number): Promise<Response> {
-  const remaining = deadline - Date.now();
-  if (remaining < MIN_USEFUL_MS) {
-    throw new Error("pubmed: time budget exhausted");
-  }
-  const controller = new AbortController();
-  const timer = setTimeout(
-    () => controller.abort(),
-    Math.min(PER_CALL_TIMEOUT_MS, remaining),
-  );
-  try {
-    return await fetch(url, { signal: controller.signal, cache: "no-store" });
-  } finally {
-    clearTimeout(timer);
-  }
+  const day = (iso: string) => iso.replace(/-/g, "/");
+  return `(${terms}) AND ("${day(from)}"[EDAT] : "${day(to)}"[EDAT])`;
 }
 
 /**
@@ -78,27 +47,6 @@ interface ESummaryRecord {
   authors?: { name: string }[];
   articleids?: { idtype: string; value: string }[];
   pubtype?: string[];
-}
-
-/**
- * Derive ranking signals from PubMed metadata. Deliberately conservative:
- * without the full text we can only infer weakly, so live items get modest
- * priors rather than confident ones.
- */
-function inferSignals(title: string, abstractText: string): PublicationSignals {
-  const text = `${title} ${abstractText}`.toLowerCase();
-  const has = (...words: string[]) => words.some((w) => text.includes(w));
-  return {
-    mechanistic: has("mechanism", "mechanistic", "drives", "mediates", "confers"),
-    inVitroOnly:
-      has("in vitro", "cell line") && !has("patient", "xenograft", "in vivo", "clinical"),
-    clinical: has("patients", "clinical trial", "phase 1", "phase 2", "phase 3", "cohort"),
-    acquiredResistance: has("acquired resistance", "resistance", "refractory", "relapse"),
-    negativeResult: has("did not improve", "no significant difference", "failed to"),
-    noveltyPrior: 55,
-    strategicPrior: 40,
-    replication: "none",
-  };
 }
 
 function classifyType(pubtypes: string[] = []): Publication["type"] {
@@ -161,12 +109,13 @@ async function fetchAbstracts(
   ids: string[],
   deadline: number,
 ): Promise<Record<string, string>> {
+  // efetch accepts long id lists; the text response is what we parse below.
   const out: Record<string, string> = {};
   try {
     const url = withKey(
       `${EUTILS}/efetch.fcgi?db=pubmed&id=${ids.join(",")}&rettype=abstract&retmode=text`,
     );
-    const res = await fetchWithTimeout(url, deadline);
+    const res = await fetchWithDeadline(url, deadline);
     if (!res.ok) return out;
     const text = await res.text();
     // efetch text mode numbers each record: "1. Journal. 2026 ..."
@@ -182,33 +131,27 @@ async function fetchAbstracts(
   return out;
 }
 
-export interface PubMedResult {
-  publications: Publication[];
-  /** Total hits PubMed reports for the query, used for the funnel's top number. */
-  totalFound: number;
-}
-
 export async function fetchPubMed(
   profile: ResearchProfile,
-  limit = 40,
-): Promise<PubMedResult | null> {
-  const deadline = Date.now() + TOTAL_BUDGET_MS;
+  opts: { from: string; to: string; deadline: number; limit?: number },
+): Promise<SourceResult | null> {
+  const { from, to, deadline, limit = 120 } = opts;
   try {
-    const query = encodeURIComponent(buildQuery(profile));
+    const query = encodeURIComponent(buildQuery(profile, from, to));
     const searchUrl = withKey(
       `${EUTILS}/esearch.fcgi?db=pubmed&term=${query}&retmax=${limit}&sort=date&retmode=json`,
     );
-    const searchRes = await fetchWithTimeout(searchUrl, deadline);
+    const searchRes = await fetchWithDeadline(searchUrl, deadline);
     if (!searchRes.ok) return null;
     const searchJson = await searchRes.json();
     const ids: string[] = searchJson?.esearchresult?.idlist ?? [];
-    const totalFound = Number(searchJson?.esearchresult?.count ?? ids.length);
-    if (!ids.length) return null;
+    const scanned = Number(searchJson?.esearchresult?.count ?? ids.length);
+    if (!ids.length) return { publications: [], scanned };
 
-    const sumUrl = withKey(
-      `${EUTILS}/esummary.fcgi?db=pubmed&id=${ids.join(",")}&retmode=json`,
+    const sumRes = await fetchWithDeadline(
+      withKey(`${EUTILS}/esummary.fcgi?db=pubmed&id=${ids.join(",")}&retmode=json`),
+      deadline,
     );
-    const sumRes = await fetchWithTimeout(sumUrl, deadline);
     if (!sumRes.ok) return null;
     const sumJson = await sumRes.json();
     const abstracts = await fetchAbstracts(ids, deadline);
@@ -226,19 +169,18 @@ export async function fetchPubMed(
           source: r.source ?? "PubMed",
           publishedAt: toIsoDate(r.sortpubdate ?? r.pubdate),
           type: classifyType(r.pubtype),
-          authors: (r.authors ?? []).map((a) => a.name).slice(0, 8),
+          authors: (r.authors ?? []).map((a) => a.name).slice(0, 12),
           summary: abstract ? `${abstract.slice(0, 220).trim()}…` : title,
-          abstract: abstract || "Abstract not available from PubMed for this record.",
+          abstract,
           tags: [],
           organizations: [],
           origin: "pubmed" as const,
           url: `https://pubmed.ncbi.nlm.nih.gov/${r.uid}/`,
           doi,
-          signals: inferSignals(title, abstract),
         };
       });
 
-    return { publications, totalFound };
+    return { publications, scanned };
   } catch {
     return null;
   }

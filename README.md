@@ -2,281 +2,161 @@
 
 **Know what changed before it changes your field.**
 
-Scientific literature intelligence for biomedical researchers. Signal ingests a
-large volume of publications, filters to the small subset relevant to a specific
-research program, ranks what is left, and explains why each item matters to
-*that* researcher.
-
-The product thesis is visible on every screen:
+Signal reads each night's new biomedical literature: PubMed, bioRxiv,
+medRxiv and ClinicalTrials.gov. It decides which few records matter to one
+researcher's program and explains why. Each researcher has an account, a
+research profile they maintain, and a ranked briefing every morning in the app
+and in their inbox.
 
 ```
-1,248 items ingested  →  11 likely relevant  →  3 important
+4,000 records read  →  25 assessed by Claude  →  11 likely relevant  →  3 worth reading
 ```
-
-Signal's job is not to summarise everything. It is to decide what is worth your
-attention, and to show its work.
 
 ---
 
-## Quick start
+## How it works
 
-### Local development
+```
+             ┌ PubMed (profile query) ┐
+ nightly ─→  ├ ClinicalTrials.gov     ├→ lexical prefilter ─→ Claude assesses ─→ stored per user
+ cron        └ bioRxiv + medRxiv      ┘   (per profile)       each candidate
+                                                                     │
+                     briefing page + email  ←  rank with learned preferences
+```
+
+1. **Ingest.** PubMed and ClinicalTrials.gov are queried with each user's
+   profile terms. bioRxiv and medRxiv cannot be searched by topic, so the whole
+   window is fetched once and shared across users.
+2. **Prefilter** (`lib/ranking/scoring.ts → prefilterScore`). A free,
+   word-boundary match against the profile drops most of the volume. The top
+   *N* candidates go on to the next step. Anything already assessed for that
+   user is skipped, so no record is paid for twice.
+3. **Assess** (`lib/ai/`). Claude reads each candidate with the researcher's
+   profile and returns structured JSON. That JSON holds relevance, novelty,
+   evidence and strategic scores, each with a reason, plus "why this matters to
+   you", a plain-English explanation, key findings, limitations, and the
+   authors' claims kept separate from Signal's interpretation.
+4. **Rank** (`rankBriefing`). The AI's four dimensions are combined with a fifth,
+   *user preference fit*, which is computed from weights learned through
+   feedback. The combination happens at read time, so Save, Not relevant and
+   Important re-rank the briefing instantly with no further AI call. HIGH is
+   capped at three items.
+
+Nightly runs send every user's candidates as one
+[Message Batch](https://docs.claude.com/en/docs/build-with-claude/batch-processing).
+That costs half as much and avoids serverless timeouts.
+`/api/cron/finalize` collects the results, publishes the briefings and sends
+the emails. **Refresh now** on the briefing page evaluates directly while the
+user watches, with a 15-minute cooldown per user.
+
+### Accounts and access
+
+- Email and password sign-up through **Supabase Auth**. The email is confirmed
+  by a link, and password reset and email change work the same way.
+- **Pilot gate.** Anyone can register. Accounts are approved automatically if
+  their email was invited from `/admin`; everyone else waits on a waitlist.
+  Only approved accounts get briefings, so only they cost money.
+- Every table has row level security on and **no policies**. The browser
+  only talks to Supabase Auth. All data access runs in server code with the
+  secret key, after the session is verified (`lib/auth/session.ts`).
+
+---
+
+## Setup
+
+### 1. Supabase
+
+1. Create a project at [supabase.com](https://supabase.com).
+2. **SQL Editor:** run `supabase/migrations/0001_init.sql`.
+3. **Authentication → URL Configuration:** set Site URL to your app URL, and
+   add `https://<your-domain>/auth/confirm` (and
+   `http://localhost:3000/auth/confirm`) to Redirect URLs.
+4. **Authentication → Emails → SMTP Settings:** turn on custom SMTP. Supabase's
+   built-in mailer only delivers to your own team's addresses and is heavily
+   rate-limited. Resend works:
+   host `smtp.resend.com`, port `465`, user `resend`, password = your Resend
+   API key, sender = an address on your verified domain.
+5. **Authentication → Emails → Templates:** make links work in any browser,
+   not just the one that signed up. Change each link to point at
+   `/auth/confirm` with a token hash:
+   - Confirm signup: `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email&next=/onboarding`
+   - Reset password: `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=recovery`
+   - Change email address: `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email_change&next=/settings`
+
+   The default templates also work, as long as the link is opened in the same
+   browser.
+
+### 2. Resend
+
+Verify a sending domain at [resend.com](https://resend.com). Use one API key
+for the SMTP setting above and for `RESEND_API_KEY`, and set `EMAIL_FROM` to an
+address on that domain.
+
+### 3. Environment
+
+Copy `.env.example` to `.env.local` and fill it in. On Vercel, add the same
+variables under Settings → Environment Variables. Put your own email in
+`ADMIN_EMAILS` so you can approve others.
+
+### 4. Run
 
 ```bash
 npm install
-cp .env.example .env.local     # optional — the demo runs fine without it
-npm run dev
-```
-
-Open http://localhost:3000.
-
-No API keys, no database, no accounts. The app boots straight into a fully
-populated briefing.
-
-### Production verification
-
-Run the same build Vercel will run, then serve it:
-
-```bash
+npm run dev        # http://localhost:3000
+npm test           # unit tests
 npm run build
-npm start
 ```
 
-Open http://localhost:3000 and confirm the briefing, a paper detail page, and
-**Generate Today's Briefing** all work before deploying.
-
----
-
-## The 30-second demo
-
-1. **Open `/`.** The funnel headline answers "what is this and how much did it
-   scan" immediately. Three HIGH cards sit under it, each with a
-   *Why this matters to you* line.
-2. **Click "Generate Today's Briefing".** A short progress sequence runs —
-   searching → evaluating relevance → ranking significance — and resolves to the
-   same three items. Tick *Include live PubMed results* to pull real records from
-   NCBI; if PubMed is slow or unreachable it silently falls back to the demo
-   corpus.
-3. **Open the top paper.** Key findings, study design, limitations, the score
-   breakdown that produced the ranking, and an **Evidence** section that keeps
-   *what the authors report* strictly separate from *Signal's interpretation*.
-4. **Press Important / Save / Not relevant.** The "What Signal has learned"
-   panel in the sidebar moves, and scores re-rank live.
-
-`Reset demo state` on `/profile` returns everything to its seeded values between
-demos.
-
----
-
-## Demo scenario
-
-A fictional research program on **KRAS G12D in non-small-cell lung cancer**:
-
-- **Interests** — KRAS G12D, NSCLC, acquired resistance, RAS/MAPK signaling,
-  targeted therapy, tumor evolution
-- **Watchlist** — Revolution Medicines, Mirati/BMS, Eli Lilly, Genentech/Roche
-
-### About the demo data
-
-**Every seeded publication is fictional.** Authors, findings, drug codenames,
-DOIs and trial identifiers are invented. Venue names (bioRxiv, Nature Cancer,
-…) are used only as realistic containers — no claim in the corpus should be
-attributed to any real publication, author, or company. Seeded items carry a
-`Demo` chip in the UI and a disclaimer on their detail page.
-
-Live PubMed results, when enabled, are real records and are labelled `PubMed`.
-Signal does not generate findings for them; it ranks their actual metadata.
-
----
-
-## Architecture
-
-```
-app/
-  page.tsx                 /            Today's Briefing
-  profile/page.tsx         /profile     Research profile + editor
-  saved/page.tsx           /saved       Saved and dismissed items
-  watchlist/page.tsx       /watchlist   Tracked topics and organizations
-  paper/[id]/page.tsx      /paper/[id]  Publication detail
-  not-found.tsx                         404
-  api/briefing/route.ts                 Ingestion endpoint
-
-components/
-  layout/      AppShell, Sidebar
-  briefing/    FunnelHeadline, BriefingFeed, PaperCard, GenerateBriefing
-  paper/       PaperDetail
-  profile/     ProfileEditor, TagField
-  saved/ watchlist/
-  ui/          primitives (Chip, Button, ScoreBar, Panel, …)
-
-lib/
-  types.ts                 Data models
-  constants.ts             Client-safe shared constants
-  data/profile.ts          Default research profile + seeded preferences
-  data/seed-papers.ts      Fictional demo corpus
-  ingestion/pubmed.ts      NCBI E-utilities client (server-only) + normalization
-  ingestion/pipeline.ts    ingest → normalize → filter → rank → briefing
-  ranking/scoring.ts       Five transparent dimensions → Signal score
-  ranking/explain.ts       "Why this matters to you" + ranking rationale
-  preferences/model.ts     Preference weights updated by feedback
-  store/persistence.ts     SignalRepository (localStorage today)
-  store/SignalProvider.tsx Client store; runs ranking so feedback is instant
-```
-
-The separation that matters: **no component computes a score, and no scoring
-code knows about React.** `lib/ranking/scoring.ts` is a pure function of
-`(publication × profile × preference weights)`.
-
-### The pipeline
-
-```
-PubMed (optional)  ┐
-                   ├→ normalize → relevance filter → rank → tier → briefing
-seed corpus        ┘
-```
-
-- **Normalize** — every source is mapped to a single `Publication` shape.
-- **Filter** — items below `RELEVANCE_FLOOR` (38/100 research relevance) never
-  reach the briefing. This is where most of the volume disappears.
-- **Rank** — five dimensions, weighted into one Signal score.
-- **Tier** — HIGH ≥ 74, NOTABLE ≥ 54, otherwise CONTEXT. HIGH is additionally
-  capped at `MAX_HIGH_ITEMS = 3`: the product promises three, so it shows three.
-
-### The ranking model
-
-| Dimension | Weight | Driven by |
-| --- | --- | --- |
-| Research relevance | 32% | keyword / gene / disease / technique matches against the profile |
-| User preference fit | 22% | learned preference weights × publication signals |
-| Evidence strength | 18% | study type, cohort size, clinical vs in-vitro, replication |
-| Novelty | 16% | novelty prior, recency, whether the claim is confirmatory |
-| Strategic significance | 12% | competitive weight, tracked organizations, regulatory impact |
-
-Every dimension returns its reasons alongside its score, which is what the
-detail page renders. To retune the model, edit `DIMENSION_WEIGHTS` or a single
-`score*` function — nothing else changes.
-
-### Learning from feedback
-
-`Important`, `Save`, `Read` and `Not relevant` each nudge a small weight vector
-in `lib/preferences/model.ts`. Those weights feed the *user preference fit*
-dimension, so ranking visibly responds, and they render as the confidence bars
-under **What Signal has learned**. Bars that have moved from their seeded
-baseline turn amber.
-
-This is a deliberately simple online update rather than a learned model. It is
-legible, it demonstrably changes ranking, and it can be replaced with real
-personalization without touching a single call site.
-
----
-
-## Persistence — read this before sending the link out
-
-There is **no database and no server-side state**. Feedback, saved items,
-dismissals, profile edits and the cached live-PubMed results all persist to the
-visitor's own `localStorage`, behind the `SignalRepository` interface in
-`lib/store/persistence.ts`. Nothing is written to disk on the server, which is
-exactly what a serverless host requires.
-
-What that means once the app is public:
-
-| Behaviour | Consequence |
-| --- | --- |
-| Every visitor gets their own independent state | Two researchers can use the link at once without affecting each other's briefing |
-| State is per-browser, per-device | The same person on laptop and phone sees two separate demos |
-| Cleared site data / private window wipes it | Each visit starts from the seeded state — good for demos, and `Reset demo state` on `/profile` does it on demand |
-| **You cannot see what researchers did** | No feedback, saved item, or profile edit reaches you. If you want to know what they clicked, you need a database or analytics — neither is built |
-
-That last row is the real limitation of this build. It is fine for *showing*
-the product and asking "would this save you time?", and insufficient for
-*measuring* what they engaged with. Adding it later means implementing
-`SignalRepository` against Postgres and swapping the export — no UI changes.
-
-Supabase/Postgres was left out deliberately: it adds a setup step and a failure
-mode to an app whose main requirement is working perfectly in front of a
-researcher on bad conference wifi.
-
----
-
-## PubMed integration
-
-`lib/ingestion/pubmed.ts` builds a boolean query from the profile's keywords and
-genes, then calls NCBI `esearch` → `esummary` → `efetch`. Signals (mechanistic,
-clinical, in-vitro-only, resistance-related) are inferred conservatively from
-title and abstract text, so live items get modest priors rather than confident
-ones.
-
-Every failure path — no network, timeout, rate limit, malformed response —
-returns `null` and the pipeline falls back to the seeded corpus with a visible
-note. **The demo cannot break because of an external API.**
-
-No paid API is used anywhere.
-
----
-
-## Deploying to Vercel
-
-Signal is a stock Next.js App Router project. Vercel auto-detects it — there is
-no `vercel.json`, no custom build command, and no output configuration to set.
-
-### 1. Push to GitHub
-
-Create an empty repository on GitHub (no README, no .gitignore — this repo has
-both), then:
+To trigger the nightly pipeline locally:
 
 ```bash
-git remote add origin https://github.com/<your-username>/signal.git
-git push -u origin main
+curl -H "Authorization: Bearer $CRON_SECRET" localhost:3000/api/cron/sweep
+curl -H "Authorization: Bearer $CRON_SECRET" localhost:3000/api/cron/finalize   # once the batch has ended
 ```
 
-### 2. Import into Vercel
+### 5. Deploy
 
-1. Go to [vercel.com/new](https://vercel.com/new).
-2. Import the `signal` repository.
-3. Leave every build setting at its default — Framework Preset should already
-   read **Next.js**.
-4. Click **Deploy**.
-
-That is the whole deployment. **No environment variables are required**; the
-app ships with its seed corpus and runs the complete demo without them.
-
-### 3. Environment variables (all optional)
-
-Add these under **Settings → Environment Variables** only if you want the live
-PubMed path to be more robust in production.
-
-| Variable | Required? | What it does | Exposure |
-| --- | --- | --- | --- |
-| *(none)* | — | The full demo works with zero configuration | — |
-| `NCBI_API_KEY` | Optional | Raises the NCBI rate limit from 3 → 10 req/sec. Worth adding because serverless hosts share outbound IPs, so the unauthenticated per-IP limit is easier to trip. [Free key](https://account.ncbi.nlm.nih.gov/settings/) | **Server-side only** |
-| `NCBI_TOOL_EMAIL` | Optional | Contact address NCBI asks API consumers to identify themselves with. Recommended alongside the key | **Server-side only** |
-
-Both are read exclusively in `lib/ingestion/pubmed.ts`, which carries an
-`import "server-only"` guard: if anyone ever imports that module from a client
-component, **the build fails** rather than shipping the key to the browser.
-Neither variable is prefixed `NEXT_PUBLIC_`, and the project uses no
-`NEXT_PUBLIC_` variables at all — nothing reaches the client bundle.
-
-Without a key, live PubMed still works; it is just likelier to hit a rate limit,
-and rate limits degrade silently to the seed corpus.
-
-### What happens if PubMed is down when you demo
-
-Nothing visible breaks. **Generate Today's Briefing** defaults to the seeded
-corpus, and the *Include live PubMed results* checkbox is opt-in. Even with it
-ticked, every upstream failure — refused connection, 429 rate limit, malformed
-response, or a hang — returns the seeded briefing with a short note instead of
-an error. These four paths are verified, not assumed.
-
-Ingestion also runs under a shared 7-second budget across its three NCBI calls,
-so a slow upstream can never exceed the serverless function's time limit and
-turn into a gateway error.
+`vercel.json` schedules the sweep at 09:00 UTC and finalize at 10:30 UTC. Most
+batches finish within an hour. On the Hobby plan each cron runs once a day. If
+a batch is still running at 10:30, the briefing waits until the next
+finalize. On Pro, change the finalize schedule to hourly (`0 * * * *`) so
+late batches are picked up sooner.
 
 ---
 
-## What this MVP deliberately does not have
+## Cost
 
-No authentication, billing, permissions, multi-tenancy, or ML infrastructure.
-This is a researcher-validation build. Its purpose is to support one question:
+Each assessment is about 2.5k input tokens and 1–2k output tokens, thinking
+included. With the defaults (Claude Opus 5.5, 25 candidates per user per
+night, batch pricing), that comes to roughly **$0.50 per user per day**. On-demand
+refreshes cost about twice as much per item because they don't use batches.
+Levers: `SIGNAL_NIGHTLY_CANDIDATES`, `SIGNAL_ON_DEMAND_CANDIDATES`, and
+`SIGNAL_MODEL=claude-sonnet-5-5` (about half the price).
 
-> *"Would this actually save you time, and what would make you use it?"*
+## Layout
+
+```
+app/(auth)/        sign in, sign up, confirmation, password reset, server actions
+app/(setup)/       onboarding (research profile), waitlist
+app/(app)/         briefing, paper detail, saved, watchlist, profile, settings, admin
+app/api/           on-demand briefings, cron sweep/finalize
+app/auth/confirm   landing route for every emailed auth link
+lib/ai/            prompt, schema, direct + batch evaluation (Anthropic SDK)
+lib/briefing/      the pipeline: ingest → prefilter → assess → store
+lib/ingestion/     PubMed, bioRxiv/medRxiv, ClinicalTrials.gov adapters
+lib/ranking/       prefilter, composite score, tiers
+lib/db/            data access (service-role Supabase client)
+lib/email/         daily briefing email (Resend)
+supabase/          schema
+proxy.ts           session refresh + signed-out redirect
+```
+
+## Limits worth knowing
+
+- The AI sees titles and abstracts (or registry summaries), not full text.
+  Every detail page says so.
+- bioRxiv's API serves 30 records per two-second page, so on-demand refreshes
+  read only the last two days of preprints. The nightly sweep reads the full
+  window.
+- The preference model is a transparent online update over six learned
+  traits, not a trained model. It is deliberately legible.

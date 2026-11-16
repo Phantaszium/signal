@@ -17,7 +17,7 @@ export function Sidebar({
   nav: NavItem[];
   pathname: string;
 }) {
-  const { profile, learned, savedIds, weights, briefing } = useSignal();
+  const { profile, learned, savedIds, weights, briefing, account } = useSignal();
   const moved = new Set(changedPreferences(weights));
 
   return (
@@ -32,6 +32,9 @@ export function Sidebar({
         </div>
         <p className="mt-1 text-[11px] leading-snug text-ink-faint">
           Know what changed before it changes your field.
+        </p>
+        <p className="mt-2 truncate text-[11px] text-ink-muted" title={account.email}>
+          {account.email}
         </p>
       </div>
 
@@ -144,7 +147,7 @@ export function Sidebar({
         </ul>
         <p className="mt-3 text-[10px] leading-snug text-ink-faint">
           Confidence updates as you mark items important or not relevant. Bars in
-          amber have moved from their starting values this session.
+          amber have moved from the neutral starting point.
         </p>
       </section>
     </div>

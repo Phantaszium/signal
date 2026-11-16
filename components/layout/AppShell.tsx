@@ -4,16 +4,22 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { cx } from "@/components/ui/primitives";
+import { useSignal } from "@/lib/store/SignalProvider";
 
-const NAV = [
+const BASE_NAV = [
   { href: "/", label: "Today's Briefing" },
   { href: "/saved", label: "Saved" },
   { href: "/watchlist", label: "Watchlist" },
   { href: "/profile", label: "Profile" },
+  { href: "/settings", label: "Settings" },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const { account } = useSignal();
+  const NAV = account.isAdmin
+    ? [...BASE_NAV, { href: "/admin", label: "Pilot access" }]
+    : BASE_NAV;
 
   return (
     <div className="min-h-screen">

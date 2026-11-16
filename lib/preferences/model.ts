@@ -8,7 +8,7 @@
  * changing any call site.
  */
 
-import { DEFAULT_LEARNED_PREFERENCES, DEFAULT_PREFERENCE_WEIGHTS } from "@/lib/data/profile";
+import { LEARNED_PREFERENCES, NEUTRAL_PREFERENCE_WEIGHTS } from "@/lib/data/profile";
 import type {
   FeedbackAction,
   LearnedPreference,
@@ -68,17 +68,17 @@ export function applyFeedback(
 export function deriveLearnedPreferences(
   weights: PreferenceWeights,
 ): LearnedPreference[] {
-  return DEFAULT_LEARNED_PREFERENCES.map((pref) => ({
+  return LEARNED_PREFERENCES.map((pref) => ({
     ...pref,
     confidence: Number(weights[pref.key].toFixed(2)),
   }));
 }
 
-/** Preferences that have moved away from their seeded baseline. */
+/** Preferences that have moved away from the neutral starting point. */
 export function changedPreferences(weights: PreferenceWeights): PreferenceKey[] {
   return (Object.keys(weights) as PreferenceKey[]).filter(
-    (k) => Math.abs(weights[k] - DEFAULT_PREFERENCE_WEIGHTS[k]) > 0.005,
+    (k) => Math.abs(weights[k] - NEUTRAL_PREFERENCE_WEIGHTS[k]) > 0.005,
   );
 }
 
-export { DEFAULT_PREFERENCE_WEIGHTS };
+export { NEUTRAL_PREFERENCE_WEIGHTS };

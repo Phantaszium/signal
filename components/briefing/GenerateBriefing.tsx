@@ -1,148 +1,175 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, cx } from "@/components/ui/primitives";
 import { useSignal } from "@/lib/store/SignalProvider";
-import type { Publication } from "@/lib/types";
 
-type Phase = "idle" | "running" | "done";
-
-interface Counts {
-  ingested: number;
-  relevant: number;
-  important: number;
+interface Progress {
+  status: "evaluating" | "ready" | "failed";
+  error: string | null;
+  funnel: { scanned?: number; candidates?: number };
+  evaluated: number;
 }
 
-const STEPS: { running: string; result: (c: Counts) => string }[] = [
-  {
-    running: "Searching literature…",
-    result: (c) => `${c.ingested.toLocaleString()} items found`,
-  },
-  { running: "Evaluating relevance…", result: (c) => `${c.relevant} likely relevant` },
-  {
-    running: "Ranking significance…",
-    result: (c) => `${c.important} important findings identified`,
-  },
-];
+type Phase =
+  | { kind: "idle"; note?: string }
+  | { kind: "running"; briefingId: string; progress: Progress | null };
 
-const STEP_MS = 700;
-const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const POLL_MS = 3000;
+
+function steps(progress: Progress | null) {
+  const scanned = progress?.funnel.scanned ?? 0;
+  const candidates = progress?.funnel.candidates ?? 0;
+  const gathered = scanned > 0;
+  return [
+    {
+      label: gathered
+        ? `${scanned.toLocaleString()} records read from PubMed, bioRxiv, medRxiv and ClinicalTrials.gov`
+        : "Reading PubMed, bioRxiv, medRxiv and ClinicalTrials.gov…",
+      state: gathered ? "done" : "active",
+    },
+    {
+      label: gathered
+        ? `${candidates} matched your profile closely enough to assess`
+        : "Filtering against your research profile…",
+      state: gathered ? "done" : "pending",
+    },
+    {
+      label:
+        gathered && candidates > 0
+          ? `Assessing each one for you… ${progress?.evaluated ?? 0} of ${candidates}`
+          : "Assessing relevance, evidence and novelty…",
+      state: gathered ? "active" : "pending",
+    },
+  ] as const;
+}
 
 export function GenerateBriefing() {
-  const { profile, briefing, ingestLive, lastGeneratedAt } = useSignal();
-  const [phase, setPhase] = useState<Phase>("idle");
-  const [step, setStep] = useState(0);
-  const [live, setLive] = useState(false);
-  const [note, setNote] = useState<string | null>(null);
+  const { running, briefingMeta, lastFailure } = useSignal();
+  const router = useRouter();
+  const [phase, setPhase] = useState<Phase>(
+    running?.mode === "on_demand"
+      ? { kind: "running", briefingId: running.id, progress: null }
+      : { kind: "idle", note: lastFailure ?? undefined },
+  );
   const busy = useRef(false);
 
-  const run = useCallback(async () => {
+  // Follow new server snapshots: a run started in another tab, or a failure
+  // recorded after a refresh.
+  const snapshotKey = `${running?.id ?? ""}|${lastFailure ?? ""}`;
+  const [seenKey, setSeenKey] = useState(snapshotKey);
+  if (seenKey !== snapshotKey) {
+    setSeenKey(snapshotKey);
+    if (running?.mode === "on_demand") {
+      setPhase({ kind: "running", briefingId: running.id, progress: null });
+    } else if (phase.kind === "idle" && lastFailure) {
+      setPhase({ kind: "idle", note: lastFailure });
+    }
+  }
+
+  const runningId = phase.kind === "running" ? phase.briefingId : null;
+
+  // Poll the run until it finishes, then reload the server snapshot.
+  useEffect(() => {
+    if (!runningId) return;
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const res = await fetch(`/api/briefings/${runningId}`, { cache: "no-store" });
+        if (!res.ok) throw new Error(String(res.status));
+        const progress = (await res.json()) as Progress;
+        if (cancelled) return;
+        if (progress.status === "evaluating") {
+          setPhase({ kind: "running", briefingId: runningId, progress });
+          timer = setTimeout(tick, POLL_MS);
+          return;
+        }
+        setPhase({
+          kind: "idle",
+          note: progress.status === "failed" ? (progress.error ?? "The briefing failed.") : undefined,
+        });
+        router.refresh();
+      } catch {
+        if (!cancelled) timer = setTimeout(tick, POLL_MS * 2);
+      }
+    };
+    let timer = setTimeout(tick, 500);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [runningId, router]);
+
+  const start = useCallback(async () => {
     if (busy.current) return;
     busy.current = true;
-    setPhase("running");
-    setStep(0);
-    setNote(null);
-
-    // Ingest first, then animate — so every number the sequence reveals is the
-    // number the briefing actually ends up showing.
-    let result: { items: Publication[]; scanVolume: number; note: string } | null = null;
     try {
-      const res = await fetch("/api/briefing", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ profile, live }),
-      });
-      if (res.ok) result = await res.json();
+      const res = await fetch("/api/briefings", { method: "POST" });
+      const body = await res.json();
+      if (res.status === 202) {
+        setPhase({ kind: "running", briefingId: body.briefingId, progress: null });
+      } else if (body.reason === "running") {
+        setPhase({ kind: "running", briefingId: body.briefingId, progress: null });
+      } else if (body.reason === "cooldown") {
+        const at = new Date(body.retryAt).toLocaleTimeString("en-US", {
+          hour: "numeric",
+          minute: "2-digit",
+        });
+        setPhase({ kind: "idle", note: `You can refresh again at ${at}.` });
+      } else {
+        setPhase({ kind: "idle", note: "Could not start a briefing." });
+      }
     } catch {
-      // Falls through to the seeded corpus below.
+      setPhase({ kind: "idle", note: "Could not reach Signal. Check your connection." });
+    } finally {
+      busy.current = false;
     }
+  }, []);
 
-    if (result) {
-      ingestLive(result.items, result.note, result.scanVolume);
-      setNote(result.note);
-    } else {
-      setNote("Live lookup unavailable — ranked the demo corpus instead.");
-    }
-
-    for (let i = 1; i <= STEPS.length; i += 1) {
-      await wait(STEP_MS);
-      setStep(i);
-    }
-    await wait(300);
-    setPhase("done");
-    busy.current = false;
-  }, [profile, live, ingestLive]);
-
-  const counts: Counts = {
-    ingested: briefing.funnel.ingested,
-    relevant: briefing.funnel.likelyRelevant,
-    important: briefing.funnel.important,
-  };
-
-  if (phase === "running") {
+  if (phase.kind === "running") {
     return (
       <div className="rounded-md border border-line bg-surface px-4 py-3">
         <ol className="space-y-2">
-          {STEPS.map((s, i) => {
-            const state = i < step ? "done" : i === step ? "active" : "pending";
-            return (
-              <li
-                key={s.running}
+          {steps(phase.progress).map((s) => (
+            <li
+              key={s.label.slice(0, 12)}
+              className={cx(
+                "flex items-center gap-2.5 text-[13px] transition-opacity duration-300",
+                s.state === "pending" ? "opacity-30" : "opacity-100",
+              )}
+            >
+              <span
                 className={cx(
-                  "flex items-center gap-2.5 text-[13px] transition-opacity duration-300",
-                  state === "pending" ? "opacity-30" : "opacity-100",
+                  "inline-block h-1.5 w-1.5 shrink-0 rounded-full",
+                  s.state === "done"
+                    ? "bg-accent"
+                    : s.state === "active"
+                      ? "animate-pulse bg-high"
+                      : "bg-line-strong",
                 )}
-              >
-                <span
-                  className={cx(
-                    "inline-block h-1.5 w-1.5 rounded-full",
-                    state === "done"
-                      ? "bg-accent"
-                      : state === "active"
-                        ? "animate-pulse bg-high"
-                        : "bg-line-strong",
-                  )}
-                />
-                {state === "done" ? (
-                  <span className="tabular font-medium text-ink">{s.result(counts)}</span>
-                ) : (
-                  <span className="text-ink-muted">{s.running}</span>
-                )}
-              </li>
-            );
-          })}
+              />
+              <span className={cx("tabular", s.state === "done" ? "font-medium text-ink" : "text-ink-muted")}>
+                {s.label}
+              </span>
+            </li>
+          ))}
         </ol>
+        <p className="mt-2.5 text-[11px] text-ink-faint">
+          This usually takes one to three minutes. You can leave this page; the briefing keeps building.
+        </p>
       </div>
     );
   }
 
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-      <Button variant="primary" onClick={run}>
-        {phase === "done" ? "Regenerate briefing" : "Generate Today's Briefing"}
+      <Button variant={briefingMeta ? "secondary" : "primary"} onClick={start}>
+        {briefingMeta ? "Refresh now" : "Build my first briefing"}
       </Button>
-
-      <label className="flex cursor-pointer items-center gap-1.5 text-[12px] text-ink-muted select-none">
-        <input
-          type="checkbox"
-          checked={live}
-          onChange={(e) => setLive(e.target.checked)}
-          className="h-3.5 w-3.5 accent-[var(--accent)]"
-        />
-        Include live PubMed results
-      </label>
-
-      {note ? (
-        <span className="text-[11px] text-ink-faint">{note}</span>
-      ) : lastGeneratedAt ? (
-        <span className="text-[11px] text-ink-faint">
-          Last generated{" "}
-          {new Date(lastGeneratedAt).toLocaleTimeString("en-US", {
-            hour: "numeric",
-            minute: "2-digit",
-          })}
-        </span>
-      ) : null}
+      <span className="text-[11px] text-ink-faint">
+        {phase.note ?? "A new briefing is prepared every morning and emailed to you."}
+      </span>
     </div>
   );
 }

@@ -4,8 +4,11 @@ import type {
   ResearchProfile,
 } from "@/lib/types";
 
-/** The demo researcher's program. Editable at /profile. */
-export const DEFAULT_PROFILE: ResearchProfile = {
+/**
+ * A worked example profile, offered during onboarding so a new researcher can
+ * see what a complete profile looks like before writing their own.
+ */
+export const EXAMPLE_PROFILE: ResearchProfile = {
   program: "KRAS G12D / NSCLC",
   description:
     "We study acquired resistance to KRAS G12D-selective inhibitors in non-small-cell lung cancer. Our work combines patient-derived models and longitudinal ctDNA to map how RAS/MAPK rewiring drives escape from targeted inhibition, and to identify combination strategies that extend durability.",
@@ -39,43 +42,49 @@ export const DEFAULT_PROFILE: ResearchProfile = {
 };
 
 /**
- * Seeded "what Signal has learned" statements. Each maps to a preference key
- * that the scoring module reads, so these are not decorative — changing a
- * confidence here changes ranking.
+ * The "what Signal has learned" statements. Each maps to a preference key that
+ * the scoring module reads, so these are not decorative: the confidence shown
+ * is the live weight, and it moves as the researcher gives feedback.
  */
-export const DEFAULT_LEARNED_PREFERENCES: LearnedPreference[] = [
+export const LEARNED_PREFERENCES: Omit<LearnedPreference, "confidence">[] = [
   {
     id: "pref-mechanistic",
-    statement: "You prioritize mechanistic studies over purely descriptive studies.",
-    confidence: 0.86,
+    statement: "You prioritize mechanistic studies over purely descriptive ones.",
     key: "mechanistic",
   },
   {
     id: "pref-invitro",
-    statement: "You read preprints, but discount in-vitro-only claims.",
-    confidence: 0.74,
+    statement: "You discount in-vitro-only claims.",
     key: "discountInVitroOnly",
   },
   {
     id: "pref-negative",
     statement: "You value well-powered negative results.",
-    confidence: 0.68,
     key: "negativeResults",
   },
   {
     id: "pref-resistance",
-    statement: "You frequently read studies involving acquired resistance.",
-    confidence: 0.91,
+    statement: "You read studies on treatment resistance.",
     key: "acquiredResistance",
+  },
+  {
+    id: "pref-clinical",
+    statement: "You favour work with clinical or patient data.",
+    key: "clinical",
+  },
+  {
+    id: "pref-preprints",
+    statement: "You read preprints.",
+    key: "preprints",
   },
 ];
 
-/** Baseline weights before any feedback is applied. */
-export const DEFAULT_PREFERENCE_WEIGHTS: PreferenceWeights = {
-  mechanistic: 0.86,
-  discountInVitroOnly: 0.74,
-  negativeResults: 0.68,
-  acquiredResistance: 0.91,
-  clinical: 0.62,
-  preprints: 0.55,
+/** Every account starts neutral; feedback moves the weights from here. */
+export const NEUTRAL_PREFERENCE_WEIGHTS: PreferenceWeights = {
+  mechanistic: 0.5,
+  discountInVitroOnly: 0.5,
+  negativeResults: 0.5,
+  acquiredResistance: 0.5,
+  clinical: 0.5,
+  preprints: 0.5,
 };

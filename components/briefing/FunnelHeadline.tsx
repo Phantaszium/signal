@@ -17,7 +17,7 @@ export function FunnelHeadline({
   const steps = [
     {
       value: funnel.ingested.toLocaleString(),
-      label: "items ingested",
+      label: "records read",
       tone: "muted" as const,
     },
     {

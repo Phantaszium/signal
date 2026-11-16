@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { PublicationType, Tier } from "@/lib/types";
+import type { Publication, PublicationType, Tier } from "@/lib/types";
 
 export function cx(...parts: (string | false | null | undefined)[]) {
   return parts.filter(Boolean).join(" ");
@@ -33,6 +33,14 @@ export function Chip({
     </span>
   );
 }
+
+const ORIGIN_LABEL: Record<Publication["origin"], string> = {
+  pubmed: "PubMed",
+  biorxiv: "bioRxiv",
+  medrxiv: "medRxiv",
+  clinicaltrials: "ClinicalTrials.gov",
+};
+export { ORIGIN_LABEL };
 
 const TYPE_LABEL: Record<PublicationType, string> = {
   journal: "Journal",

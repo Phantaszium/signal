@@ -14,7 +14,9 @@ import {
   cx,
   formatDate,
 } from "@/components/ui/primitives";
-import type { ScoreBreakdown } from "@/lib/types";
+import { ORIGIN_LABEL } from "@/components/ui/primitives";
+import { rankEvaluated } from "@/lib/ranking/scoring";
+import type { EvaluatedItem, ScoreBreakdown } from "@/lib/types";
 
 function Block({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -25,17 +27,23 @@ function Block({ title, children }: { title: string; children: React.ReactNode }
   );
 }
 
-export function PaperDetail({ id }: { id: string }) {
-  const { getScored, savedIds, dismissedIds, recordFeedback, profile } = useSignal();
-  const item = getScored(id);
+export function PaperDetail({
+  id,
+  fallback,
+}: {
+  id: string;
+  /** Loaded by the page when the item is not in the current briefing. */
+  fallback: EvaluatedItem | null;
+}) {
+  const { getScored, savedIds, dismissedIds, recordFeedback, profile, weights } = useSignal();
+  const item = getScored(id) ?? (fallback ? rankEvaluated(fallback, weights) : undefined);
 
   if (!item) {
     return (
       <div className="px-6 py-16 text-center lg:px-10">
         <p className="text-[15px] font-medium text-ink">Publication not found</p>
         <p className="mt-1 text-[13px] text-ink-muted">
-          This item is not in the current corpus. It may have come from a live
-          search in a previous session.
+          Signal has not assessed this item for your profile.
         </p>
         <Link
           href="/"
@@ -65,13 +73,7 @@ export function PaperDetail({ id }: { id: string }) {
             <span className="font-medium text-ink-muted">{pub.source}</span>
             <span aria-hidden>·</span>
             <time dateTime={pub.publishedAt}>{formatDate(pub.publishedAt)}</time>
-            {pub.origin === "seed" ? (
-              <Chip tone="quiet" title="Fictional record created for this demo">
-                Demo record
-              </Chip>
-            ) : (
-              <Chip tone="accent">PubMed</Chip>
-            )}
+            <Chip tone="accent">{ORIGIN_LABEL[pub.origin]}</Chip>
             <span
               className={cx(
                 "eyebrow ml-1 text-[10px] font-semibold",
@@ -103,14 +105,11 @@ export function PaperDetail({ id }: { id: string }) {
             ) : null}
           </p>
 
-          {pub.origin === "seed" && (
-            <p className="mt-3 rounded border border-line bg-canvas px-3 py-2 text-[11px] leading-relaxed text-ink-faint">
-              This is a <strong className="font-medium">fictional demo record</strong>.
-              Authors, findings, identifiers and any organisation attribution are
-              invented for demonstration and should not be cited or attributed to any
-              real publication or company.
-            </p>
-          )}
+          <p className="mt-3 rounded border border-line bg-canvas px-3 py-2 text-[11px] leading-relaxed text-ink-faint">
+            The assessment below was written by AI from the title and abstract
+            {pub.type === "trial" ? " (registry summary)" : ""}, not the full text.
+            Check the source before relying on a specific claim.
+          </p>
 
           <div
             className={cx(
@@ -132,8 +131,16 @@ export function PaperDetail({ id }: { id: string }) {
           </div>
 
           <div className="mt-6 space-y-5">
+            {pub.plainEnglish ? (
+              <Block title="In plain English">
+                <p className="text-[14px] leading-[1.7] text-ink">{pub.plainEnglish}</p>
+              </Block>
+            ) : null}
+
             <Block title="Abstract">
-              <p className="text-[13.5px] leading-[1.7] text-ink-muted">{pub.abstract}</p>
+              <p className="whitespace-pre-line text-[13.5px] leading-[1.7] text-ink-muted">
+                {pub.abstract || "No abstract is available for this record."}
+              </p>
             </Block>
 
             {pub.keyFindings?.length ? (

@@ -6,8 +6,8 @@ import { PaperCard } from "@/components/briefing/PaperCard";
 import { Button, Panel, formatDate } from "@/components/ui/primitives";
 
 export function SavedList() {
-  const { savedItems, dismissedIds, ranked, recordFeedback, feedback } = useSignal();
-  const dismissed = ranked.filter((s) => dismissedIds.includes(s.publication.id));
+  const { savedItems, dismissedIds, allItems, recordFeedback, feedbackCount } = useSignal();
+  const dismissed = allItems.filter((s) => dismissedIds.includes(s.publication.id));
 
   return (
     <div className="px-6 py-7 lg:px-10 lg:py-9">
@@ -53,7 +53,7 @@ export function SavedList() {
                 >
                   <div className="min-w-0">
                     <Link
-                      href={`/paper/${item.publication.id}`}
+                      href={`/paper/${encodeURIComponent(item.publication.id)}`}
                       className="block truncate text-[13px] text-ink hover:text-accent"
                     >
                       {item.publication.title}
@@ -76,10 +76,10 @@ export function SavedList() {
         </div>
       )}
 
-      {feedback.length > 0 && (
+      {feedbackCount > 0 && (
         <p className="mt-6 max-w-4xl text-[11px] text-ink-faint">
-          {feedback.length} interaction{feedback.length === 1 ? "" : "s"} recorded
-          this session, feeding the preference model in the sidebar.
+          {feedbackCount} interaction{feedbackCount === 1 ? "" : "s"} recorded so far,
+          feeding the preference model in the sidebar.
         </p>
       )}
     </div>

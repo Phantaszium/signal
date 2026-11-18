@@ -37,14 +37,14 @@ export function TagField({
       </div>
       <div
         className={cx(
-          "mt-1.5 flex flex-wrap gap-1.5 rounded border border-line bg-white px-2 py-2",
+          "mt-1.5 flex flex-wrap gap-1.5 rounded-xl border border-line-strong bg-white px-2 py-2",
           "focus-within:border-accent/50",
         )}
       >
         {values.map((v) => (
           <span
             key={v}
-            className="inline-flex items-center gap-1 rounded border border-line bg-canvas py-0.5 pr-1 pl-2 text-[12px] text-ink-muted"
+            className="inline-flex items-center gap-1 rounded-xl border border-line bg-canvas py-0.5 pr-1 pl-2 text-[12px] text-ink-muted"
           >
             {v}
             <button

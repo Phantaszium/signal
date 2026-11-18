@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ForgotPasswordForm } from "@/components/auth/ForgotPasswordForm";
 import { AuthCard } from "@/components/auth/AuthForm";
 
-export const metadata = { title: "Reset password · Signal" };
+export const metadata = { title: "Reset password" };
 
 export default function ForgotPasswordPage() {
   return (

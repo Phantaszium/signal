@@ -28,7 +28,7 @@ const topicSchema = z.object({
   sensitivity: z.enum(["broad", "balanced", "strict"]),
   sources: z
     .array(z.enum(ALL_SOURCES as [SourceKey, ...SourceKey[]]))
-    .min(1, "Choose at least one source to monitor."),
+    .min(1, "Choose at least one source to search."),
   active: z.boolean(),
 });
 
@@ -50,7 +50,7 @@ export async function saveTopicAction(id: string | null, input: unknown): Promis
 
   const existing = await listTopics(account.id);
   if (existing.length >= MAX_TOPICS) {
-    return { ok: false, error: `You can monitor up to ${MAX_TOPICS} topics. Remove or merge one first.` };
+    return { ok: false, error: `You can follow up to ${MAX_TOPICS} topics. Remove or merge one first.` };
   }
   const created = await createTopic(account.id, parsed.data);
   revalidatePath("/", "layout");
@@ -63,7 +63,7 @@ export async function deleteTopicAction(id: string): Promise<SaveTopicResult> {
   if (!valid.success) return { ok: false, error: "That topic no longer exists." };
   const topics = await listTopics(account.id);
   if (topics.length <= 1) {
-    return { ok: false, error: "Signal needs at least one topic. Edit this one instead, or add another first." };
+    return { ok: false, error: "PaperPuffin needs at least one topic. Edit this one instead, or add another first." };
   }
   await deleteTopic(account.id, valid.data);
   revalidatePath("/", "layout");

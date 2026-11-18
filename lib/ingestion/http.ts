@@ -41,7 +41,7 @@ export interface QueryTerms {
  */
 export function logSourceFailure(source: string, reason: unknown): void {
   const message = reason instanceof Error ? reason.message : String(reason);
-  console.warn(`[signal:source] ${source} failed: ${message}`);
+  console.warn(`[paperpuffin:source] ${source} failed: ${message}`);
 }
 
 /**

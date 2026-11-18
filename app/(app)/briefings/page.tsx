@@ -3,7 +3,7 @@ import { requireReadyAccount } from "@/lib/auth/session";
 import { listDigests } from "@/lib/db/digests";
 import { itemsByIds } from "@/lib/db/evaluations";
 
-export const metadata = { title: "Briefings · Signal" };
+export const metadata = { title: "Briefings" };
 
 export default async function BriefingsPage() {
   const account = await requireReadyAccount();

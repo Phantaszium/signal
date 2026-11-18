@@ -1,6 +1,6 @@
 /**
  * Digest scheduling and selection. A digest is assembled from developments
- * Signal has already found and assessed in the period: nothing in it is
+ * PaperPuffin has already found and assessed in the period: nothing in it is
  * generated for the digest, and nothing below a topic's relevance threshold
  * is ever added to fill it.
  */
@@ -26,14 +26,14 @@ export const PERIOD_MS: Partial<Record<DigestFrequency, number>> = {
 };
 
 export const FREQUENCY_LABEL: Record<DigestFrequency, { label: string; detail: string }> = {
-  daily: { label: "Daily digest", detail: "Each morning, when there is something new." },
-  weekly: { label: "Weekly digest", detail: "Once a week, including weeks with nothing new." },
-  monthly: { label: "Monthly digest", detail: "Once a month." },
+  weekly: { label: "Weekly briefing", detail: "Once a week: the most relevant new papers and why they matter. Recommended." },
+  daily: { label: "Daily briefing", detail: "Each morning, only when there is something new." },
+  monthly: { label: "Monthly briefing", detail: "Once a month." },
   important_only: {
-    label: "Important developments only",
-    detail: "No digest. An email only when Signal finds a high-priority development.",
+    label: "Only papers worth reading first",
+    detail: "No regular briefing. An email only when PaperPuffin finds a paper you should read first.",
   },
-  off: { label: "No email", detail: "Read everything in the app." },
+  off: { label: "No email", detail: "Read your briefings in the app." },
 };
 
 /** Cron runs are not exactly 24h apart, so a period counts as elapsed a little early. */

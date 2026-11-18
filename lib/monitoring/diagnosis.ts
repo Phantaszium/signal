@@ -64,7 +64,7 @@ function quietReason(check: TopicCheck): string {
   const deferred = check.deferred
     ? ` ${plural(check.deferred, "lower-ranked match", "lower-ranked matches")} ${check.deferred === 1 ? "was" : "were"} over this check's assessment limit.`
     : "";
-  const base = `${plural(assessed, "candidate")} assessed; none was relevant enough to count as a development.${deferred}`;
+  const base = `${plural(assessed, "candidate")} assessed; none was relevant enough to recommend.${deferred}`;
   // Hundreds of term matches and nothing relevant: the terms are doing the
   // damage, not the field being quiet.
   if (check.matched >= 100 && assessed >= 10) {
@@ -140,7 +140,7 @@ export function diagnoseTopic(check: TopicCheck, runStatus: RunStatus): TopicDia
     return {
       ...base,
       state: incomplete ? "incomplete" : "developments",
-      headline: `${plural(developments, "new development")}${high ? `, ${high} high priority` : ""}`,
+      headline: `${plural(developments, "new recommended paper")}${high ? `, ${high} worth reading first` : ""}`,
       detail: notes,
     };
   }
@@ -157,7 +157,7 @@ export function diagnoseTopic(check: TopicCheck, runStatus: RunStatus): TopicDia
   return {
     ...base,
     state: "quiet",
-    headline: "No significant new developments",
+    headline: "No new papers worth recommending",
     detail: quietReason(check),
   };
 }

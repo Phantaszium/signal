@@ -3,7 +3,7 @@ import { requireAdmin } from "@/lib/auth/session";
 import { listAllAccounts, listInvites } from "@/lib/db/accounts";
 import { topicsByUser } from "@/lib/db/topics";
 
-export const metadata = { title: "Pilot access · Signal" };
+export const metadata = { title: "Beta access" };
 
 export default async function AdminPage() {
   await requireAdmin();
@@ -11,7 +11,7 @@ export default async function AdminPage() {
   return (
     <div className="px-6 py-7 lg:px-10 lg:py-9">
       <header className="max-w-3xl">
-        <h1 className="text-[22px] font-semibold tracking-[-0.02em] text-ink">Pilot access</h1>
+        <h1 className="font-display text-[28px] font-semibold text-ink">Beta access</h1>
         <p className="mt-1 text-[13px] leading-relaxed text-ink-muted">
           Invited emails are approved automatically when they sign up. Only approved
           accounts are monitored, so only they cost anything to run.

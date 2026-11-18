@@ -62,7 +62,7 @@ export function applyFeedback(
 }
 
 /**
- * Render the current weights as the "What Signal has learned" statements.
+ * Render the current weights as the "What PaperPuffin has learned" statements.
  * Confidence tracks the weight so the panel visibly moves as feedback lands.
  */
 export function deriveLearnedPreferences(

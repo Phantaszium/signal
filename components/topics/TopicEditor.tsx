@@ -16,8 +16,8 @@ export function TopicEditor({ id }: { id: string | null }) {
     return (
       <div className="px-6 py-16 text-center lg:px-10">
         <p className="text-[15px] font-medium text-ink">Topic not found</p>
-        <Link href="/topics" className="mt-3 inline-block text-[13px] font-medium text-accent hover:underline">
-          ← All topics
+        <Link href="/research" className="mt-3 inline-block text-[13px] font-medium text-accent hover:underline">
+          ← My Research
         </Link>
       </div>
     );
@@ -29,17 +29,17 @@ export function TopicEditor({ id }: { id: string | null }) {
 
   return (
     <div className="px-4 py-6 sm:px-6 lg:px-10 lg:py-9">
-      <Link href="/topics" className="text-[12px] font-medium text-ink-muted hover:text-accent">
-        ← Topics
+      <Link href="/research" className="text-[12px] font-medium text-ink-muted hover:text-accent">
+        ← My Research
       </Link>
       <header className="mt-3 max-w-3xl">
-        <h1 className="text-[22px] font-semibold tracking-[-0.02em] text-ink">
+        <h1 className="font-display text-[26px] font-semibold text-ink">
           {topic ? topic.profile.program : "New topic"}
         </h1>
         <p className="mt-1 text-[13px] leading-relaxed text-ink-muted">
           {topic
-            ? "Changes apply from the next check."
-            : "A topic is one research question you want watched. Its first check reads the last 30 days; after that, Signal checks it every morning."}
+            ? "Changes apply from the next search."
+            : "A topic is one research question you want papers on. Its first search looks back 30 days; after that, PaperPuffin searches every morning."}
         </p>
       </header>
       <div className="mt-6 max-w-3xl">
@@ -54,7 +54,7 @@ export function TopicEditor({ id }: { id: string | null }) {
             router.refresh();
           }}
           onDeleted={() => {
-            router.push("/topics");
+            router.push("/research");
             router.refresh();
           }}
         />

@@ -53,7 +53,7 @@ describe("diagnoseTopic", () => {
   it("explains a genuinely empty window", () => {
     const d = diagnoseTopic(check(), "complete");
     expect(d.state).toBe("quiet");
-    expect(d.headline).toBe("No significant new developments");
+    expect(d.headline).toBe("No new papers worth recommending");
     expect(d.detail).toContain("no records containing this topic's terms");
   });
 
@@ -70,7 +70,7 @@ describe("diagnoseTopic", () => {
 
   it("explains candidates assessed with none relevant", () => {
     const d = diagnoseTopic(check({ fetched: 9, matched: 7, queued: 7, assessed: 7 }), "complete");
-    expect(d.detail).toBe("7 candidates assessed; none was relevant enough to count as a development.");
+    expect(d.detail).toBe("7 candidates assessed; none was relevant enough to recommend.");
   });
 
   it("points at over-general terms when hundreds match and none is relevant", () => {
@@ -103,7 +103,7 @@ describe("diagnoseTopic", () => {
   it("reports developments and high-priority counts", () => {
     const d = diagnoseTopic(check({ matched: 3, queued: 3, assessed: 3, developments: 2, highPriority: 1 }), "complete");
     expect(d.state).toBe("developments");
-    expect(d.headline).toBe("2 new developments, 1 high priority");
+    expect(d.headline).toBe("2 new recommended papers, 1 worth reading first");
   });
 
   it("is pending while the run is still assessing", () => {

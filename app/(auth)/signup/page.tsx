@@ -4,14 +4,14 @@ import { currentUser } from "@/lib/auth/session";
 import { SignUpForm } from "@/components/auth/SignUpForm";
 import { AuthCard } from "@/components/auth/AuthForm";
 
-export const metadata = { title: "Create account · Signal" };
+export const metadata = { title: "Create account" };
 
 export default async function SignUpPage() {
-  if (await currentUser()) redirect("/");
+  if (await currentUser()) redirect("/home");
   return (
     <AuthCard
       title="Create your account"
-      subtitle="Signal is in a small pilot. Anyone can register; invited researchers get access straight away, and others join a short waitlist."
+      subtitle="Free for students. PaperPuffin is in a small beta: invited students get access straight away, and others join a short waitlist."
       footer={
         <>
           Already have an account?{" "}

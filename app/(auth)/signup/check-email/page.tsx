@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ResendForm } from "@/components/auth/ResendForm";
 import { AuthCard } from "@/components/auth/AuthForm";
 
-export const metadata = { title: "Confirm your email · Signal" };
+export const metadata = { title: "Confirm your email" };
 
 export default async function CheckEmailPage({ searchParams }: PageProps<"/signup/check-email">) {
   const { email } = await searchParams;

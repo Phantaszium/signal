@@ -32,17 +32,17 @@ export const RELEVANCE_THRESHOLD: Record<Sensitivity, number> = {
 export const SENSITIVITY_LABEL: Record<Sensitivity, { label: string; detail: string }> = {
   broad: {
     label: "Broad",
-    detail: "Include adjacent background (relevance 40+). Any single term match is assessed.",
+    detail: "Include useful background (relevance 40+). Good for learning a new field.",
   },
   balanced: {
     label: "Balanced",
     detail:
-      "Same area as your question (relevance 50+). A keyword, gene or organism must appear before a record is assessed.",
+      "Papers in the same area as your question (relevance 50+). Recommended for most topics.",
   },
   strict: {
     label: "Strict",
     detail:
-      "Only what bears directly on your question (relevance 65+). Records need a strong term match to be assessed.",
+      "Only papers that bear directly on your question (relevance 65+). Fewer, closer matches.",
   },
 };
 
@@ -119,6 +119,8 @@ export interface Development extends ScoredPublication {
   whatChanged: string | null;
   implications: string[];
   nextSteps: string[];
+  /** Study guides already written for this paper, by explanation level. */
+  guides: NonNullable<AiAssessment["guides"]>;
 }
 
 export function toDevelopment(
@@ -140,6 +142,7 @@ export function toDevelopment(
     whatChanged: a.whatChanged ?? null,
     implications: a.implications ?? a.signalInterpretation ?? [],
     nextSteps: a.nextSteps ?? [],
+    guides: a.guides ?? {},
   };
 }
 

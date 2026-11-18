@@ -5,7 +5,7 @@ import { currentUser } from "@/lib/auth/session";
 import { ResetPasswordForm } from "@/components/auth/ResetPasswordForm";
 import { AuthCard } from "@/components/auth/AuthForm";
 
-export const metadata = { title: "Choose a new password · Signal" };
+export const metadata = { title: "Choose a new password" };
 
 /** Reached from the emailed reset link, which signs the user in first. */
 export default async function ResetPasswordPage() {

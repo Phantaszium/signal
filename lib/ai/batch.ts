@@ -1,13 +1,14 @@
 import "server-only";
 
 import { anthropic, evaluationParams, parseEvaluation, type EvaluationOutcome } from "@/lib/ai/evaluate";
-import type { MonitoringTopic, Publication } from "@/lib/types";
+import type { MonitoringTopic, Publication, StudentProfile } from "@/lib/types";
 
 export interface BatchRequest {
   /** Must be unique within the batch; used to match results back. */
   customId: string;
   topics: MonitoringTopic[];
   publication: Publication;
+  student?: StudentProfile;
 }
 
 /**
@@ -19,7 +20,7 @@ export async function submitBatch(requests: BatchRequest[]): Promise<string> {
   const batch = await anthropic().messages.batches.create({
     requests: requests.map((r) => ({
       custom_id: r.customId,
-      params: evaluationParams(r.topics, r.publication),
+      params: evaluationParams(r.topics, r.publication, r.student),
     })),
   });
   return batch.id;

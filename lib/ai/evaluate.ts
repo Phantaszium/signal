@@ -5,7 +5,7 @@ import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { env } from "@/lib/env";
 import { assessmentSchema } from "@/lib/ai/schema";
 import { SYSTEM_PROMPT, itemBlock, topicLabel, topicsBlock } from "@/lib/ai/prompt";
-import type { AiAssessment, MonitoringTopic, Publication } from "@/lib/types";
+import type { AiAssessment, MonitoringTopic, Publication, StudentProfile } from "@/lib/types";
 
 let client: Anthropic | null = null;
 export function anthropic(): Anthropic {
@@ -21,7 +21,7 @@ const outputFormat = zodOutputFormat(assessmentSchema);
  * researcher's topics, then the record: the first two are a stable prefix
  * and are cached across every item evaluated for the same user.
  */
-export function evaluationParams(topics: MonitoringTopic[], pub: Publication) {
+export function evaluationParams(topics: MonitoringTopic[], pub: Publication, student?: StudentProfile) {
   return {
     model: env.model(),
     max_tokens: 16000,
@@ -29,7 +29,7 @@ export function evaluationParams(topics: MonitoringTopic[], pub: Publication) {
       { type: "text" as const, text: SYSTEM_PROMPT },
       {
         type: "text" as const,
-        text: topicsBlock(topics),
+        text: topicsBlock(topics, student),
         cache_control: { type: "ephemeral" as const },
       },
     ],
@@ -103,10 +103,11 @@ export function parseEvaluation(
 export async function evaluateNow(
   topics: MonitoringTopic[],
   pub: Publication,
+  student?: StudentProfile,
 ): Promise<EvaluationOutcome> {
   try {
     const message = await anthropic().beta.messages.create({
-      ...evaluationParams(topics, pub),
+      ...evaluationParams(topics, pub, student),
       betas: ["server-side-fallback-2026-07-01"],
       fallbacks: "default",
     });

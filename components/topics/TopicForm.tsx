@@ -5,6 +5,8 @@ import { TagField } from "@/components/topics/TagField";
 import { Button, Panel, cx } from "@/components/ui/primitives";
 import { RELEVANCE_THRESHOLD, SENSITIVITY_LABEL } from "@/lib/developments";
 import { SOURCE_LABEL } from "@/lib/monitoring/diagnosis";
+import { suggestTermsAction } from "@/lib/profile/actions";
+import { useSignal } from "@/lib/store/SignalProvider";
 import { deleteTopicAction, saveTopicAction } from "@/lib/topics/actions";
 import type { Sensitivity, SourceKey, TopicProfile } from "@/lib/types";
 
@@ -29,20 +31,20 @@ export const EMPTY_TOPIC: TopicDraft = {
     exclusions: [],
   },
   sensitivity: "balanced",
-  sources: ["pubmed", "clinicaltrials", "biorxiv", "medrxiv", "europepmc"],
+  sources: ["pubmed", "biorxiv", "medrxiv", "europepmc"],
   active: true,
 };
 
 const SOURCE_HINT: Record<SourceKey, string> = {
   pubmed: "Peer-reviewed literature, searched with your terms",
-  clinicaltrials: "New and updated trial registrations",
+  clinicaltrials: "Clinical trial registrations. Only useful for clinical research topics",
   biorxiv: "Biology preprints, read daily",
   medrxiv: "Clinical preprints, read daily",
   europepmc: "Other preprint servers (Research Square, SSRN, …), searched with your terms",
 };
 
 /**
- * Create or edit one monitoring topic. Retrieval searches every source with
+ * Create or edit one research topic. Retrieval searches every source with
  * the keywords, synonyms, genes, organisms and diseases; the AI reads the
  * name and question verbatim when it judges relevance.
  */
@@ -68,6 +70,9 @@ export function TopicForm({
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [pending, startTransition] = useTransition();
+  const [suggesting, startSuggesting] = useTransition();
+  const [suggestNote, setSuggestNote] = useState<string | null>(null);
+  const { student } = useSignal();
 
   // Reset when the server sends a new saved topic.
   const [synced, setSynced] = useState(initial);
@@ -134,30 +139,69 @@ export function TopicForm({
           id="program"
           value={draft.profile.program}
           onChange={(e) => set("program", e.target.value)}
-          placeholder="e.g. KRAS G12D in non-small cell lung cancer"
-          className="mt-1.5 w-full rounded border border-line bg-white px-2.5 py-1.5 text-[13px] text-ink outline-none focus:border-accent/50"
+          placeholder="e.g. Antibiotic resistance in Vibrio natriegens"
+          className="mt-1.5 w-full rounded-xl border border-line bg-white px-2.5 py-1.5 text-[13px] text-ink outline-none focus:border-accent/50"
         />
 
         <div className="mt-4">
           <label className="text-[12px] font-medium text-ink" htmlFor="description">
-            Research question
+            What do you want to learn about?
           </label>
           <textarea
             id="description"
             value={draft.profile.description}
             onChange={(e) => set("description", e.target.value)}
             rows={4}
-            placeholder="What are you trying to find out, and what decisions are coming up? What kinds of developments would change your plans?"
-            className="mt-1.5 w-full resize-y rounded border border-line bg-white px-2.5 py-2 text-[13px] leading-relaxed text-ink outline-none focus:border-accent/50"
+            placeholder="Describe the question in your own words: what you are studying, with which organism, system or method, and what kinds of papers would help you."
+            className="mt-1.5 w-full resize-y rounded-xl border border-line bg-white px-2.5 py-2 text-[13px] leading-relaxed text-ink outline-none focus:border-accent/50"
           />
           <p className="mt-1 text-[10px] leading-relaxed text-ink-faint">
-            The AI reads this when judging relevance, so a paper can match without using your exact
-            keywords. Be specific: it matters more than any single term.
+            PaperPuffin reads this when judging relevance, so a paper can match without using your
+            exact keywords. Be specific: it matters more than any single term.
           </p>
         </div>
       </Panel>
 
-      <Panel title="What to search for">
+      <Panel
+        title="What to search for"
+        action={
+          <Button
+            size="sm"
+            disabled={suggesting || (!draft.profile.program.trim() && !draft.profile.description.trim())}
+            onClick={() =>
+              startSuggesting(async () => {
+                setSuggestNote(null);
+                const r = await suggestTermsAction({
+                  field: student.field,
+                  researchQuestion: draft.profile.program,
+                  projectDescription: draft.profile.description,
+                });
+                if (!r.ok) {
+                  setSuggestNote(r.error);
+                  return;
+                }
+                const merge = (a: string[], b: string[]) => [...new Set([...a, ...b])];
+                setDraft((d) => ({
+                  ...d,
+                  profile: {
+                    ...d.profile,
+                    keywords: merge(d.profile.keywords, r.value.keywords),
+                    synonyms: merge(d.profile.synonyms, r.value.synonyms),
+                    genes: merge(d.profile.genes, r.value.genes),
+                    organisms: merge(d.profile.organisms, r.value.organisms),
+                    diseases: merge(d.profile.diseases, r.value.diseases),
+                    techniques: merge(d.profile.techniques, r.value.techniques),
+                  },
+                }));
+                setSuggestNote("Suggested by AI from your description. Remove anything that doesn't fit.");
+              })
+            }
+          >
+            {suggesting ? "Thinking…" : "✨ Suggest terms"}
+          </Button>
+        }
+      >
+        {suggestNote && <p className="mb-3 text-[12px] text-ink-muted">{suggestNote}</p>}
         <div className="space-y-4">
           <TagField
             label="Keywords"
@@ -186,8 +230,8 @@ export function TopicForm({
             onChange={(v) => set("techniques", v)}
           />
           <TagField
-            label="Companies / competitors"
-            hint="drives strategic significance and the Watchlist"
+            label="Labs, groups or consortia"
+            hint="optional · helps PaperPuffin notice their work"
             values={draft.profile.organizations}
             onChange={(v) => set("organizations", v)}
           />
@@ -204,13 +248,18 @@ export function TopicForm({
         </p>
       </Panel>
 
-      <Panel title="Relevance sensitivity">
+      <details className="rounded-2xl border border-line bg-surface/60">
+        <summary className="cursor-pointer px-5 py-3 text-[13px] font-semibold text-ink-muted hover:text-ink">
+          Advanced: how picky to be, and which sources to search
+        </summary>
+        <div className="space-y-5 px-3 pb-3">
+      <Panel title="How picky should recommendations be?">
         <div className="grid gap-2 sm:grid-cols-3">
           {(Object.keys(SENSITIVITY_LABEL) as Sensitivity[]).map((s) => (
             <label
               key={s}
               className={cx(
-                "flex cursor-pointer flex-col rounded border px-3 py-2.5 transition-colors",
+                "flex cursor-pointer flex-col rounded-xl border px-3 py-2.5 transition-colors",
                 draft.sensitivity === s ? "border-accent/50 bg-accent-soft/50" : "border-line hover:border-line-strong",
               )}
             >
@@ -249,9 +298,11 @@ export function TopicForm({
           ))}
         </div>
       </Panel>
+        </div>
+      </details>
 
       {id && (
-        <Panel title="Monitoring">
+        <Panel title="Following">
           <label className="flex cursor-pointer items-start gap-3">
             <input
               type="checkbox"
@@ -260,9 +311,9 @@ export function TopicForm({
               className="mt-0.5 h-4 w-4 accent-[var(--accent)]"
             />
             <span>
-              <span className="block text-[13px] font-medium text-ink">Monitor this topic</span>
+              <span className="block text-[13px] font-medium text-ink">Search for new papers on this topic</span>
               <span className="block text-[12px] text-ink-muted">
-                Paused topics are not checked and cost nothing. Their past developments stay visible.
+                Paused topics are not searched. Papers already recommended stay in your library and Discover.
               </span>
             </span>
           </label>
@@ -280,7 +331,7 @@ export function TopicForm({
         )}
         {error && <span className="text-[12px] text-negative">{error}</span>}
         {savedAt && !dirty && !error && (
-          <span className="text-[11px] text-positive">Saved. The next check uses these settings.</span>
+          <span className="text-[11px] text-positive">Saved. The next search uses these settings.</span>
         )}
       </div>
 
@@ -289,8 +340,8 @@ export function TopicForm({
           {confirmDelete ? (
             <div className="flex flex-wrap items-center gap-3">
               <span className="text-[12px] text-ink">
-                Delete this topic? Its developments leave your dashboard and activity; anything you
-                saved stays in Saved, and its records are not assessed again. Pausing keeps everything.
+                Delete this topic? Its recommendations leave Home and Discover; anything you saved
+                stays in My Library, and its papers are not read again. Pausing keeps everything.
               </span>
               <Button variant="danger" active disabled={pending} onClick={remove}>
                 Delete topic

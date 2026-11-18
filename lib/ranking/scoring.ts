@@ -1,5 +1,5 @@
 /**
- * Signal's ranking model.
+ * PaperPuffin's ranking model.
  *
  * Two stages:
  *
@@ -27,7 +27,7 @@ import type {
   TopicProfile,
 } from "@/lib/types";
 
-/** Relative contribution of each dimension to the composite Signal score. */
+/** Relative contribution of each dimension to the composite ranking score. */
 export const DIMENSION_WEIGHTS: Record<keyof ScoreBreakdown, number> = {
   researchRelevance: 0.32,
   userPreferenceFit: 0.22,
@@ -40,8 +40,8 @@ export const DIMENSION_LABELS: Record<keyof ScoreBreakdown, string> = {
   researchRelevance: "Research relevance",
   novelty: "Novelty",
   evidenceStrength: "Evidence strength",
-  userPreferenceFit: "User preference fit",
-  strategicSignificance: "Strategic significance",
+  userPreferenceFit: "Fit with your reading history",
+  strategicSignificance: "Field impact",
 };
 
 /**

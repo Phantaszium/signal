@@ -142,3 +142,161 @@ export async function fetchEuropePmcPreprints(
     return null;
   }
 }
+
+// ------------------------------------------------------------ live search
+
+/** Extra fields Europe PMC returns for journal articles. */
+export interface EpmcArticle extends EpmcRecord {
+  pmid?: string;
+  pmcid?: string;
+  isOpenAccess?: string;
+  journalInfo?: { journal?: { title?: string }; yearOfPublication?: number };
+  pubTypeList?: { pubType?: string[] };
+}
+
+export interface SearchFilters {
+  /** Only records first published on or after this date (YYYY-MM-DD). */
+  from?: string;
+  type?: "all" | "journal" | "preprint";
+  openAccessOnly?: boolean;
+  /** Restrict to one journal title. */
+  journal?: string;
+  sort?: "relevance" | "date";
+}
+
+/** A search hit with the provenance the results list shows. */
+export interface SearchHit {
+  publication: Publication;
+  openAccess: boolean;
+  pmcid?: string;
+}
+
+const clean = (s: string) => s.replace(/["\\]/g, " ").replace(/\s+/g, " ").trim();
+
+/**
+ * A Europe PMC query for a student's free-text search. Europe PMC covers
+ * PubMed/MEDLINE, PubMed Central and preprint servers in one index, so a
+ * single query searches all of them. Free text is passed through as Europe
+ * PMC's own search syntax (it supports AND/OR and quoted phrases).
+ */
+export function buildSearchQuery(text: string, f: SearchFilters = {}): string {
+  const q = text.trim();
+  if (!q) return "";
+  const parts = [`(${q})`];
+  if (f.type === "journal") parts.push("NOT SRC:PPR");
+  if (f.type === "preprint") parts.push("SRC:PPR");
+  if (f.openAccessOnly) parts.push("OPEN_ACCESS:y");
+  if (f.journal?.trim()) parts.push(`JOURNAL:"${clean(f.journal)}"`);
+  if (f.from && /^\d{4}-\d{2}-\d{2}$/.test(f.from)) {
+    parts.push(`FIRST_PDATE:[${f.from} TO ${new Date().toISOString().slice(0, 10)}]`);
+  }
+  return parts.join(" AND ");
+}
+
+/**
+ * Map any Europe PMC record. PubMed records get the same id the PubMed
+ * adapter gives them, and bioRxiv/medRxiv preprints the same id the preprint
+ * feed gives them, so a paper found by search and by monitoring is one paper.
+ */
+export function mapEpmcArticle(r: EpmcArticle): SearchHit | null {
+  if (!r.id) return null;
+  const openAccess = r.isOpenAccess === "Y";
+  if (r.source === "PPR") {
+    const pub = mapEpmcPreprint(r);
+    return pub ? { publication: pub, openAccess, pmcid: r.pmcid } : null;
+  }
+  const title = stripTags(r.title).replace(/\.$/, "");
+  if (!title) return null;
+  const abstract = stripTags(r.abstractText);
+  const doi = r.doi?.trim() || undefined;
+  const authors = (r.authorList?.author ?? [])
+    .map((a) => collapseWhitespace(a.fullName))
+    .filter(Boolean);
+  const types = (r.pubTypeList?.pubType ?? []).join(" ").toLowerCase();
+  const pmid = r.pmid ?? (r.source === "MED" ? r.id : undefined);
+  const publication: Publication = {
+    id: pmid ? `pmid-${pmid}` : `epmc-${r.source ?? "x"}-${r.id}`,
+    title,
+    source: collapseWhitespace(r.journalInfo?.journal?.title) || "Journal article",
+    publishedAt:
+      r.firstPublicationDate ??
+      (r.journalInfo?.yearOfPublication ? `${r.journalInfo.yearOfPublication}-01-01` : new Date().toISOString().slice(0, 10)),
+    type: types.includes("clinical trial") || types.includes("randomized") ? "trial" : "journal",
+    authors: (authors.length ? authors : (r.authorString ?? "").split(",").map((a) => a.trim()))
+      .filter(Boolean)
+      .slice(0, MAX_AUTHORS),
+    summary: teaser(abstract, title),
+    abstract,
+    tags: [],
+    organizations: [],
+    origin: pmid ? "pubmed" : "europepmc",
+    url: pmid
+      ? `https://pubmed.ncbi.nlm.nih.gov/${pmid}/`
+      : doi
+        ? `https://doi.org/${doi}`
+        : `https://europepmc.org/article/${r.source}/${r.id}`,
+    doi,
+  };
+  return { publication, openAccess, pmcid: r.pmcid };
+}
+
+export type SearchOutcome =
+  | { ok: true; hits: SearchHit[]; total: number; nextCursor: string | null }
+  | { ok: false; reason: string };
+
+/** Live literature search for the Discover page. */
+export async function searchLiterature(
+  text: string,
+  filters: SearchFilters = {},
+  opts: { cursor?: string; pageSize?: number } = {},
+): Promise<SearchOutcome> {
+  const query = buildSearchQuery(text, filters);
+  if (!query) return { ok: true, hits: [], total: 0, nextCursor: null };
+  const params = new URLSearchParams({
+    query,
+    format: "json",
+    resultType: "core",
+    pageSize: String(opts.pageSize ?? 20),
+    cursorMark: opts.cursor ?? "*",
+  });
+  if (filters.sort === "date") params.set("sort", "P_PDATE_D desc");
+  try {
+    const res = await fetchWithDeadline(`${API}?${params}`, Date.now() + 20_000, 15_000);
+    if (!res.ok) {
+      logSourceFailure("europepmc-search", `HTTP ${res.status}`);
+      return { ok: false, reason: `Europe PMC returned an error (HTTP ${res.status}).` };
+    }
+    const json = (await res.json()) as EpmcResponse & { nextCursorMark?: string; resultList?: { result?: EpmcArticle[] } };
+    const records = (json.resultList?.result ?? []) as EpmcArticle[];
+    const hits = records.map(mapEpmcArticle).filter((h): h is SearchHit => h !== null);
+    const total = json.hitCount ?? hits.length;
+    const next = json.nextCursorMark && json.nextCursorMark !== opts.cursor && records.length ? json.nextCursorMark : null;
+    return { ok: true, hits, total, nextCursor: next };
+  } catch (error) {
+    logSourceFailure("europepmc-search", error);
+    return { ok: false, reason: "Europe PMC could not be reached. Try again in a moment." };
+  }
+}
+
+/** Look up one paper by DOI or PMID. Null when it is not indexed or the source is unreachable. */
+export async function lookupPaper(
+  id: { doi: string } | { pmid: string } | { source: string; extId: string },
+): Promise<SearchHit | null> {
+  const query =
+    "doi" in id
+      ? `DOI:"${clean(id.doi)}"`
+      : "pmid" in id
+        ? `EXT_ID:${id.pmid.replace(/\D/g, "")} AND SRC:MED`
+        : `EXT_ID:"${clean(id.extId)}" AND SRC:${id.source.replace(/[^A-Z]/g, "")}`;
+  const params = new URLSearchParams({ query, format: "json", resultType: "core", pageSize: "1" });
+  try {
+    const res = await fetchWithDeadline(`${API}?${params}`, Date.now() + 12_000, 10_000);
+    if (!res.ok) return null;
+    const json = (await res.json()) as { resultList?: { result?: EpmcArticle[] } };
+    const first = json.resultList?.result?.[0];
+    return first ? mapEpmcArticle(first) : null;
+  } catch (error) {
+    logSourceFailure("europepmc-lookup", error);
+    return null;
+  }
+}

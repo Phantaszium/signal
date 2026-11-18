@@ -1,19 +1,38 @@
-# Signal
+# PaperPuffin
 
-**Know what changed, why it matters, and what to do next.**
+**Your research companion.** Discover more. Understand deeper. Stay curious.
 
-Signal is event-driven research intelligence for biomedical researchers. Each
-researcher describes the research topics they want watched. Signal checks new
-papers, preprints and clinical-trial updates against every topic each morning,
-or on demand. It decides which records are real developments for that topic and
-explains them: what changed, why it matters, and what to do next.
+PaperPuffin is an AI research companion for undergraduate and graduate student
+researchers. A student tells it what they're working on; it finds new papers
+and preprints relevant to their project, explains *why each one matters to
+their research*, and helps them understand the paper at their level, always
+separating what the paper reports from AI interpretation.
 
-When nothing meaningful happened, Signal says so and shows exactly what it
-checked. It never pads a dashboard, digest or email with weak matches.
+It is built first for the life sciences and computational biology, but
+nothing in the data model is discipline-specific: topics are free text and
+the research field is a free-text profile field.
 
----
+## What students get
 
-## How it works
+| Area | What it does |
+|---|---|
+| **Onboarding** (`/onboarding`) | Five short steps: academic level, field, research question, project description, foundational papers (DOI/PMID, resolved via Europe PMC), briefing frequency. AI suggests search terms from the description. Only a topic name and one search term are required. |
+| **Home** (`/home`) | Recommended papers (last 14 days, priority first), weekly briefing summary, followed topics, Continue Reading, update status, "Find new papers". |
+| **Discover** (`/discover`) | *Recommended for you*, filterable by topic, date, journal, relevance and read status, plus papers read and not recommended (for transparency). *Search the literature* runs live Europe PMC search (PubMed, PMC, preprints) with date, type, open-access and sort filters, Save, and "Explain for my research". |
+| **Paper** (`/paper/[id]`) | Why it matters to your research, then a study guide at beginner, intermediate or advanced level: summary, research question, methods, key findings, limitations (author-stated vs AI critique), why it matters, concepts to understand, and what to check in the full text. Library status and notes. |
+| **Briefings** (`/briefings`) | Current and past briefings with reading priorities ("read these first", then by topic). Assembled from stored assessments, never free-written. |
+| **My Library** (`/library`) | Saved papers by reading status (to read, reading, read) and topic, with notes, why each was recommended, reading history, and dismissed papers. |
+| **My Research** (`/research`) | Topics, editable research profile, briefing frequency, what PaperPuffin uses and has learned (with reset), search history. |
+
+### Honesty rules the code enforces
+
+- Every recommendation and search result links to its original source.
+- AI text is labelled **AI interpretation**; restatements of the paper are labelled **From the paper**. Study-guide limitations are tagged *stated by the authors* or *AI critique*.
+- The AI sees titles and abstracts only, and every explanation says so. The prompts forbid inventing numbers, results or citations.
+- Foundational papers that can't be found are kept as entered and never given an invented title.
+- "Learning" is described for what it is: feedback re-orders recommendations through six transparent weights (see `lib/preferences/model.ts`). It never decides what counts as relevant, and the student can reset it.
+
+## How it works (pipeline)
 
 ```
  for each topic:                                   per user
@@ -58,10 +77,10 @@ checked. It never pads a dashboard, digest or email with weak matches.
      relevance;
    - novelty, evidence and strategic scores;
    - what changed, as reported by the source;
-   - why it matters to you, and implications (Signal's interpretation);
+   - why it matters to you, and implications (PaperPuffin's interpretation);
    - suggested next steps (labelled as AI suggestions);
    - key findings, limitations, and the authors' claims kept separate from
-     Signal's inference.
+     PaperPuffin's inference.
 
    Relevance is semantic, so a record can match without using the topic's
    exact keywords.
@@ -101,14 +120,14 @@ Vercel Cron runs two jobs (`vercel.json`):
 
 Both jobs are idempotent: one scheduled run per user per 12 hours, atomic
 claims for alerts and digest periods, and assessments keyed per user and
-publication. **Check now** on the dashboard runs the same check immediately,
+publication. **Find new papers** on Home runs the same check immediately,
 with a 15-minute cooldown.
 
 ### Accounts and access
 
 - Email and password sign-up through **Supabase Auth**, with email
   confirmation, password reset and email change.
-- **Pilot gate.** Anyone can register. Emails invited from `/admin` are
+- **Beta gate.** Anyone can register. Emails invited from `/admin` are
   approved automatically; everyone else waits. Only approved accounts are
   monitored, so only they cost money.
 - Every table has row-level security on and **no policies**. The browser only
@@ -123,9 +142,10 @@ with a 15-minute cooldown.
 
 1. Create a project at [supabase.com](https://supabase.com).
 2. **SQL Editor:** run `supabase/migrations/0001_init.sql`, then
-   `0002_monitoring.sql`, then `0003_keep_assessments_on_topic_delete.sql`.
-   Each runs once. 0002 converts existing research profiles into topics and
-   keeps all existing assessments.
+   `0002_monitoring.sql`, `0003_keep_assessments_on_topic_delete.sql` and
+   `0004_paperpuffin_library.sql`. Each runs once. 0004 is additive (reading
+   status, notes, reading history). Until it runs, the app still works and
+   says those features are unavailable.
 3. **Authentication → URL Configuration:**
    - Set Site URL to your app URL.
    - Add `https://<your-domain>/auth/confirm` and
@@ -196,7 +216,10 @@ $0.01–0.02 per assessment.
 |---|---|---|
 | Scheduled check, per user | up to 25 | up to ~$0.50 |
 | New topic's first 30-day look-back | 15 extra | ~$0.30 extra |
-| Check now (no batch discount) | up to 12 | ~$0.25–0.50 |
+| Find new papers (no batch discount) | up to 12 | ~$0.25–0.50 |
+| Explain for my research (search result) | 1 | ~$0.02; capped at 25 per user per day (`PAPERPUFFIN_DAILY_EXPLAINS`) |
+| Study guide, per paper per level | 1 | ~$0.02–0.04; cached after the first time |
+| Onboarding search-term suggestion | 1 | under $0.01 |
 
 A quiet niche topic costs close to nothing. The cost is driven by how many
 records match a topic's terms, which is why over-general terms are the main
@@ -211,22 +234,27 @@ Levers:
 ## Layout
 
 ```
+app/page.tsx       public landing page (signed-in visitors go to /home)
 app/(auth)/        sign in, sign up, confirmation, password reset
-app/(setup)/       onboarding (first topic), waitlist
-app/(app)/         dashboard, activity, briefings, topics, monitoring (run history),
-                   paper detail, saved, watchlist, settings, admin
-app/api/runs       Check now: start a manual run, poll its progress
+app/(setup)/       onboarding wizard, beta waitlist
+app/(app)/         home, discover, briefings, library, research, paper detail,
+                   topics/[id] (topic editor), monitoring (search history), settings, admin
+app/api/runs       Find new papers: start a manual run, poll its progress
 app/api/cron/      scheduled sweep and finalize
+components/brand/  the puffin mascot, logo, loader and empty states
+lib/ai/            assessment prompt and schema; student.ts = term suggestions and study guides
+lib/papers/        server actions: live search, save, reading status/notes, explain, study guides
+lib/profile/       student research profile (stored in profiles.research_profile) and its actions
 lib/monitoring/    the pipeline (run.ts), run planning, diagnostics, topic status
-lib/ai/            prompt, schema, direct and batch evaluation (Anthropic SDK)
-lib/ingestion/     PubMed, ClinicalTrials.gov, Europe PMC, bioRxiv/medRxiv adapters
+lib/ingestion/     PubMed, ClinicalTrials.gov, Europe PMC (monitoring + live search), bioRxiv/medRxiv
 lib/ranking/       prefilter and composite score
-lib/developments.ts relevance vs importance, development and priority rules
-lib/digests/       digest scheduling and selection
 lib/db/            data access (service-role Supabase client)
-lib/email/         digest and alert emails (Resend)
+lib/email/         briefing and alert emails (Resend)
 supabase/          schema migrations
 ```
+
+Old routes redirect: `/activity` → `/discover`, `/saved` → `/library`,
+`/topics`, `/watchlist`, `/profile` → `/research` (see `next.config.ts`).
 
 ## Limits worth knowing
 

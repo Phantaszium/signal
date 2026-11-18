@@ -92,7 +92,7 @@ export function RunHistory({ runs }: { runs: RunRecord[] }) {
   return (
     <div className="px-4 py-6 sm:px-6 lg:px-10 lg:py-9">
       <header className="max-w-4xl">
-        <h1 className="text-[22px] font-semibold tracking-[-0.02em] text-ink">Run history &amp; diagnostics</h1>
+        <h1 className="font-display text-[28px] font-semibold text-ink">Search history</h1>
         <p className="mt-1 text-[13px] leading-relaxed text-ink-muted">
           What each check searched, what every source returned, and where records were filtered out. Use it
           to tell a quiet field apart from a source that could not be reached or a topic whose terms are too
@@ -103,7 +103,7 @@ export function RunHistory({ runs }: { runs: RunRecord[] }) {
       <ul className="mt-6 max-w-4xl space-y-4">
         {runs.length === 0 && <li className="text-[13px] text-ink-muted">No checks have run yet.</li>}
         {runs.map((run) => (
-          <li key={run.id} className="rounded-md border border-line bg-surface">
+          <li key={run.id} className="rounded-2xl border border-line bg-surface">
             <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-line px-4 py-2.5">
               <span className="text-[13px] font-medium text-ink">
                 {run.mode === "scheduled" ? "Scheduled check" : "Manual check"} · <LocalTime iso={run.createdAt} />

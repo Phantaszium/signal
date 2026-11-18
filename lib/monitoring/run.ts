@@ -90,7 +90,7 @@ const DAY = 86_400_000;
 const isoDay = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 
 function log(event: string, data: Record<string, unknown>): void {
-  console.info(`[signal:${event}] ${JSON.stringify(data)}`);
+  console.info(`[paperpuffin:${event}] ${JSON.stringify(data)}`);
 }
 
 // ------------------------------------------------------------- retrieval
@@ -421,7 +421,7 @@ export async function runManual(account: Account, runId: string): Promise<void> 
     );
 
     await mapWithConcurrency(candidates, 8, async (c) => {
-      const outcome = await evaluateNow(active, c.publication);
+      const outcome = await evaluateNow(active, c.publication, account.student);
       await saveEvaluation(account.id, c.publication.id, runId, outcome);
     });
 
@@ -429,7 +429,7 @@ export async function runManual(account: Account, runId: string): Promise<void> 
     await completeRun(run, active);
     await sendAlerts(account, active, runId);
   } catch (error) {
-    console.error(`[signal:run] manual run ${runId} failed`, error);
+    console.error(`[paperpuffin:run] manual run ${runId} failed`, error);
     await abandonRun(runId, "run failed", "Something went wrong during the check. Nothing was marked as checked; try again.");
   }
 }
@@ -503,6 +503,7 @@ export async function runScheduledSweep(): Promise<SweepReport> {
         customId: `${compact}_${i}`,
         topics: active,
         publication: c.publication,
+        student: account.student,
       }));
       // The run row exists before the batch is paid for, so a failure after
       // submitting can never orphan a batch. A run left without a batch is
@@ -527,7 +528,7 @@ export async function runScheduledSweep(): Promise<SweepReport> {
       report.requests += requests.length;
       report.batchIds.push(batchId);
     } catch (error) {
-      console.error(`[signal:run] scheduled sweep failed for account ${account.id}`, error);
+      console.error(`[paperpuffin:run] scheduled sweep failed for account ${account.id}`, error);
       if (openRun) {
         await abandonRun(openRun, "not submitted", "The scheduled check could not be submitted. It will run again tomorrow.").catch(
           () => {},
@@ -592,7 +593,7 @@ export async function finalizeRuns(): Promise<FinalizeReport> {
         .filter((t): t is MonitoringTopic => Boolean(t));
       const retry = (await publicationsByIds(declined)).slice(0, MAX_DECLINED_RETRIES);
       await mapWithConcurrency(retry, 6, async (pub) => {
-        await saveEvaluation(run.userId, pub.id, run.id, await evaluateNow(ordered, pub));
+        await saveEvaluation(run.userId, pub.id, run.id, await evaluateNow(ordered, pub, account?.student));
       });
       for (const id of declined) {
         if (!retry.some((p) => p.id === id)) {
@@ -604,7 +605,7 @@ export async function finalizeRuns(): Promise<FinalizeReport> {
       report.runsCompleted += 1;
       if (account) report.alertsSent += await sendAlerts(account, active, run.id);
     } catch (error) {
-      console.error(`[signal:run] finalizing run ${run.id} failed`, error);
+      console.error(`[paperpuffin:run] finalizing run ${run.id} failed`, error);
     }
   }
 
@@ -650,7 +651,7 @@ async function sendAlerts(account: Account, topicsList: MonitoringTopic[], runId
     return 1;
   } catch (error) {
     await releaseAlerts(account.id, [...claimed]);
-    console.error(`[signal:alert] alert email failed for account ${account.id}`, error);
+    console.error(`[paperpuffin:alert] alert email failed for account ${account.id}`, error);
     return 0;
   }
 }
@@ -719,7 +720,7 @@ async function buildDueDigests(): Promise<{ built: number; emailed: number }> {
         emailed += 1;
       }
     } catch (error) {
-      console.error(`[signal:digest] digest failed for account ${account.id}`, error);
+      console.error(`[paperpuffin:digest] digest failed for account ${account.id}`, error);
       // Not built: give the period back so the next finalize builds it. A
       // stored digest whose email failed stays in the app, marked not emailed.
       if (!stored) await releaseDigestPeriod(account.id, nowIso, account.lastDigestAt).catch(() => {});

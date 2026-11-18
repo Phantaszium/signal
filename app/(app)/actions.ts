@@ -4,8 +4,14 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireReadyAccount } from "@/lib/auth/session";
 import { DIGEST_FREQUENCIES, updateAccount } from "@/lib/db/accounts";
-import { getItemState, itemsByIds, recordFeedbackEvent, setItemState } from "@/lib/db/evaluations";
-import { applyFeedback } from "@/lib/preferences/model";
+import {
+  getItemState,
+  itemsByIds,
+  publicationsByIds,
+  recordFeedbackEvent,
+  setItemState,
+} from "@/lib/db/evaluations";
+import { NEUTRAL_PREFERENCE_WEIGHTS, applyFeedback } from "@/lib/preferences/model";
 import { rankEvaluated } from "@/lib/ranking/scoring";
 import type { FeedbackAction, PreferenceWeights } from "@/lib/types";
 
@@ -32,22 +38,29 @@ export async function recordFeedbackAction(
     itemsByIds(account.id, [String(publicationId)]),
     getItemState(account.id),
   ]);
-  if (!item) return null;
+  const [stored] = item ? [item.publication] : await publicationsByIds([String(publicationId)]);
+  if (!stored) return null;
   const current = {
-    saved: state.savedIds.includes(item.publication.id),
-    dismissed: state.dismissedIds.includes(item.publication.id),
+    saved: state.savedIds.includes(stored.id),
+    dismissed: state.dismissedIds.includes(stored.id),
   };
 
-  const scored = rankEvaluated(item, account.weights);
-  const weights = applyFeedback(account.weights, scored.publication, parsedAction);
+  // Only assessed papers carry the traits the preference model learns from.
+  const weights = item
+    ? applyFeedback(account.weights, rankEvaluated(item, account.weights).publication, parsedAction)
+    : account.weights;
   const saved = parsedAction === "save" ? !current.saved : current.saved;
   const dismissed = parsedAction === "not_relevant" ? !current.dismissed : current.dismissed;
 
   await Promise.all([
-    updateAccount(account.id, { weights }),
-    recordFeedbackEvent(account.id, item.publication.id, parsedAction),
+    item ? updateAccount(account.id, { weights }) : Promise.resolve(),
+    recordFeedbackEvent(account.id, stored.id, parsedAction),
     parsedAction === "save" || parsedAction === "not_relevant"
-      ? setItemState(account.id, item.publication.id, { saved, dismissed })
+      ? setItemState(account.id, stored.id, {
+          saved,
+          dismissed,
+          ...(parsedAction === "save" && saved ? { readingStatus: "to_read" as const } : {}),
+        })
       : Promise.resolve(),
   ]);
   return { weights, saved, dismissed };
@@ -66,6 +79,14 @@ export async function setDigestSettingsAction(input: unknown): Promise<{ ok: boo
     digestFrequency: parsed.data.digestFrequency as (typeof DIGEST_FREQUENCIES)[number],
     alertsEnabled: parsed.data.alertsEnabled,
   });
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+/** Forget what PaperPuffin has learned from feedback: back to neutral ranking. */
+export async function resetPreferencesAction(): Promise<{ ok: boolean }> {
+  const account = await requireReadyAccount();
+  await updateAccount(account.id, { weights: { ...NEUTRAL_PREFERENCE_WEIGHTS } });
   revalidatePath("/", "layout");
   return { ok: true };
 }

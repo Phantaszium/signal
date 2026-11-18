@@ -18,11 +18,14 @@ import type { RunRecord } from "@/lib/monitoring/types";
 import { applyFeedback, deriveLearnedPreferences } from "@/lib/preferences/model";
 import { rankEvaluated } from "@/lib/ranking/scoring";
 import type { AppState } from "@/lib/store/app-state";
+import type { LibraryEntry } from "@/lib/db/evaluations";
 import type {
   FeedbackAction,
   LearnedPreference,
   MonitoringTopic,
   PreferenceWeights,
+  Publication,
+  StudentProfile,
 } from "@/lib/types";
 
 interface SignalContextValue {
@@ -47,6 +50,12 @@ interface SignalContextValue {
   feedbackCount: number;
   recordFeedback: (publicationId: string, action: FeedbackAction) => void;
   getItem: (id: string) => Development | undefined;
+  student: StudentProfile;
+  /** Library state per paper id (saved, viewed or annotated papers). */
+  library: Map<string, LibraryEntry>;
+  libraryReady: boolean;
+  /** Saved papers without an AI assessment yet. */
+  unassessed: Publication[];
 }
 
 const SignalContext = createContext<SignalContextValue | null>(null);
@@ -154,6 +163,10 @@ export function SignalProvider({
       feedbackCount,
       recordFeedback,
       getItem,
+      student: initial.student,
+      library: new Map(initial.library.map((e) => [e.publicationId, e])),
+      libraryReady: initial.libraryReady,
+      unassessed: initial.unassessed,
     };
   }, [initial, topicById, weights, allItems, developments, savedIds, dismissedIds, feedbackCount, recordFeedback, getItem]);
 

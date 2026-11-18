@@ -21,7 +21,7 @@ export const env = {
   supabasePublishableKey: () =>
     required("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", "NEXT_PUBLIC_SUPABASE_ANON_KEY"),
   supabaseSecretKey: () => required("SUPABASE_SECRET_KEY", "SUPABASE_SERVICE_ROLE_KEY"),
-  /** Public origin used in emailed links, e.g. https://signal.example.com */
+  /** Public origin used in emailed links, e.g. https://paperpuffin.example.com */
   siteUrl: () =>
     process.env.NEXT_PUBLIC_SITE_URL ??
     (process.env.VERCEL_PROJECT_PRODUCTION_URL
@@ -36,5 +36,5 @@ export const env = {
       .filter(Boolean),
   model: () => process.env.SIGNAL_MODEL || "claude-opus-5-5",
   resendApiKey: () => process.env.RESEND_API_KEY,
-  emailFrom: () => process.env.EMAIL_FROM ?? "Signal <briefing@resend.dev>",
+  emailFrom: () => process.env.EMAIL_FROM ?? "PaperPuffin <briefing@resend.dev>",
 };

@@ -1,5 +1,5 @@
 /**
- * Core data models for Signal.
+ * Core data models for PaperPuffin.
  *
  * Everything in the app flows through these shapes:
  *   MonitoringTopic   — one research question the scientist wants watched
@@ -45,7 +45,7 @@ export interface Publication {
   limitations?: string[];
   /** Direct claims attributable to the authors. */
   authorsReport?: string[];
-  /** Signal's inference — explicitly NOT attributed to the authors. */
+  /** PaperPuffin's inference — explicitly NOT attributed to the authors. */
   signalInterpretation?: string[];
   /**
    * Plain-English explanation of the work for a non-specialist teammate.
@@ -221,10 +221,12 @@ export interface AiAssessment {
   significance?: { level: Significance; reason: string };
   /** The new finding or event, as the record reports it. */
   whatChanged?: string;
-  /** Signal's interpretation of what it could mean for the topic. */
+  /** PaperPuffin's interpretation of what it could mean for the topic. */
   implications?: string[];
   /** Suggested follow-ups. Speculative by nature, and labelled so. */
   nextSteps?: string[];
+  /** Study guides generated on demand, per explanation level. */
+  guides?: Partial<Record<ExplanationLevel, PaperGuide>>;
 }
 
 /** A publication with its stored assessment, as loaded for one user. */
@@ -233,6 +235,72 @@ export interface EvaluatedItem {
   assessment: AiAssessment;
   runId: string | null;
   topicId: string | null;
-  /** When Signal assessed it, which is when it became known to the user. */
+  /** When PaperPuffin assessed it, which is when it became known to the user. */
   evaluatedAt: string;
+}
+
+// ------------------------------------------------------- student profile
+
+export type AcademicLevel =
+  | "undergraduate"
+  | "masters"
+  | "phd"
+  | "postdoc"
+  | "research_staff"
+  | "other";
+
+/** How deep paper explanations go. Chosen per paper; defaulted from academic level. */
+export type ExplanationLevel = "beginner" | "intermediate" | "advanced";
+
+/** A paper the student named as foundational to their project, resolved to real metadata. */
+export interface FoundationalPaper {
+  /** What the student entered: a DOI, PMID or PubMed/DOI link. */
+  input: string;
+  title?: string;
+  authors?: string;
+  journal?: string;
+  year?: string;
+  url?: string;
+  doi?: string;
+  pmid?: string;
+  /** False when the identifier could not be found in Europe PMC. */
+  resolved: boolean;
+}
+
+/**
+ * Who the student is and what they are working on. Every field is optional:
+ * the app works without it, and it only sharpens explanations and relevance.
+ * Stored in profiles.research_profile (jsonb) with `version: 2`.
+ */
+export interface StudentProfile {
+  academicLevel: AcademicLevel | null;
+  field: string;
+  /** The overarching research question, in the student's words. */
+  researchQuestion: string;
+  projectDescription: string;
+  foundationalPapers: FoundationalPaper[];
+  /** Preferred depth of explanations; null means "decide from academic level". */
+  explanationLevel: ExplanationLevel | null;
+  updatedAt: string | null;
+}
+
+/** Saved-paper reading state. */
+export type ReadingStatus = "to_read" | "reading" | "read";
+
+/** A study guide for one paper at one explanation level. Generated on demand. */
+export interface PaperGuide {
+  level: ExplanationLevel;
+  quickSummary: string;
+  researchQuestion: string;
+  methods: string[];
+  keyFindings: string[];
+  limitations: { text: string; source: "authors" | "ai" }[];
+  whyItMatters: string;
+  concepts: { term: string; explanation: string }[];
+  /** What the abstract leaves out, so the student knows to open the full text. */
+  openQuestions: string[];
+  /** Whether the guide was written from the abstract only or from open-access full text. */
+  basis: "abstract";
+  model: string;
+  generatedAt: string;
 }

@@ -32,24 +32,24 @@ export function MonitoringStatus() {
   const scheduledPending = runs[0]?.mode === "scheduled" && runs[0].status === "evaluating";
 
   return (
-    <section className="rounded-md border border-line bg-surface">
-      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-4 py-2.5">
-        <h2 className="eyebrow text-[11px] font-semibold text-ink-muted">Monitoring status</h2>
+    <section className="rounded-2xl border border-line bg-surface">
+      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-5 py-3">
+        <h2 className="eyebrow text-[11px] font-semibold text-ink-muted">Update status</h2>
         <Link href="/monitoring" className="text-[11px] font-medium text-accent hover:underline">
-          Run history &amp; diagnostics
+          Search history
         </Link>
       </header>
 
-      <div className="px-4 py-3">
+      <div className="px-5 py-4">
         {allQuiet && (
-          <p className="mb-3 rounded border border-positive/20 bg-[#eef6f1] px-3 py-2 text-[12px] leading-relaxed text-positive">
-            No significant new developments were detected across your monitored topics during the latest
-            successful scan.
+          <p className="mb-3 rounded-xl border border-positive/20 bg-[#eef6f1] px-3 py-2 text-[12px] leading-relaxed text-positive">
+            Nothing new cleared the bar for your topics in the latest search. Quiet weeks are normal:
+            PaperPuffin won&rsquo;t pad your feed with weak matches.
           </p>
         )}
         {scheduledPending && (
           <p className="mb-3 text-[12px] leading-relaxed text-ink-muted">
-            This morning&rsquo;s scheduled check is assessing its candidates now; results appear here when it
+            This morning&rsquo;s scheduled search is reading new papers now; results appear here when it
             finishes.
           </p>
         )}
@@ -73,8 +73,8 @@ export function MonitoringStatus() {
                       </Link>
                       <span className="text-[11px] text-ink-faint">
                         {topic.lastCheckedAt
-                          ? `Last full check ${timeAgo(topic.lastCheckedAt, now)}`
-                          : "Not fully checked yet"}
+                          ? `Searched ${timeAgo(topic.lastCheckedAt, now)}`
+                          : "Not searched yet"}
                       </span>
                     </div>
                     <p
@@ -83,7 +83,7 @@ export function MonitoringStatus() {
                         state === "failed" || state === "incomplete" ? "text-negative" : "text-ink-muted",
                       )}
                     >
-                      {d ? d.headline : "Waiting for its first check"}
+                      {d ? d.headline : "Waiting for its first search"}
                       {checkedAt && d && state !== "pending" ? (
                         <span className="text-ink-faint"> · {timeAgo(checkedAt, now)}</span>
                       ) : null}
@@ -105,8 +105,8 @@ export function MonitoringStatus() {
 
         {paused > 0 && (
           <p className="mt-3 text-[11px] text-ink-faint">
-            {paused} paused topic{paused === 1 ? "" : "s"} not monitored.{" "}
-            <Link href="/topics" className="text-accent hover:underline">
+            {paused} paused topic{paused === 1 ? "" : "s"} not searched.{" "}
+            <Link href="/research" className="text-accent hover:underline">
               Manage topics
             </Link>
           </p>
@@ -115,8 +115,8 @@ export function MonitoringStatus() {
         <div className="mt-3 border-t border-line pt-3">
           <CheckNow />
           <p className="mt-2 text-[11px] leading-relaxed text-ink-faint">
-            Signal checks every topic automatically each morning. Check now runs the same check
-            immediately.
+            PaperPuffin searches for new papers on every topic each morning. Find new papers runs the same search
+            right now.
           </p>
         </div>
       </div>

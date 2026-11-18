@@ -3,7 +3,8 @@ import "server-only";
 import { env } from "@/lib/env";
 import { db } from "@/lib/supabase/admin";
 import { NEUTRAL_PREFERENCE_WEIGHTS } from "@/lib/preferences/model";
-import type { DigestFrequency, PreferenceWeights } from "@/lib/types";
+import { parseStudentProfile, serializeStudentProfile } from "@/lib/profile/student";
+import type { DigestFrequency, PreferenceWeights, StudentProfile } from "@/lib/types";
 
 export type { DigestFrequency };
 export const DIGEST_FREQUENCIES: DigestFrequency[] = ["daily", "weekly", "monthly", "important_only", "off"];
@@ -20,6 +21,8 @@ export interface Account {
   lastDigestAt: string | null;
   lastOnDemandAt: string | null;
   createdAt: string;
+  /** The student's research profile; empty until they fill it in. */
+  student: StudentProfile;
 }
 
 interface ProfileRow {
@@ -33,6 +36,7 @@ interface ProfileRow {
   last_digest_at: string | null;
   last_on_demand_at: string | null;
   created_at: string;
+  research_profile: unknown;
 }
 
 function toAccount(row: ProfileRow): Account {
@@ -50,6 +54,7 @@ function toAccount(row: ProfileRow): Account {
     lastDigestAt: row.last_digest_at,
     lastOnDemandAt: row.last_on_demand_at,
     createdAt: row.created_at,
+    student: parseStudentProfile(row.research_profile),
   };
 }
 
@@ -106,6 +111,7 @@ export async function updateAccount(
     digestFrequency: DigestFrequency;
     alertsEnabled: boolean;
     lastOnDemandAt: string;
+    student: StudentProfile;
   }>,
 ): Promise<void> {
   const row: Record<string, unknown> = {};
@@ -115,6 +121,7 @@ export async function updateAccount(
   if (patch.digestFrequency !== undefined) row.digest_frequency = patch.digestFrequency;
   if (patch.alertsEnabled !== undefined) row.alerts_enabled = patch.alertsEnabled;
   if (patch.lastOnDemandAt !== undefined) row.last_on_demand_at = patch.lastOnDemandAt;
+  if (patch.student !== undefined) row.research_profile = serializeStudentProfile(patch.student);
   const { error } = await db().from("profiles").update(row).eq("id", id);
   if (error) throw error;
 }

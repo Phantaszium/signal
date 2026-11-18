@@ -1,10 +1,18 @@
-import type { Metadata } from "next";
-import { Inter, IBM_Plex_Mono } from "next/font/google";
+import type { Metadata, Viewport } from "next";
+import { Fraunces, IBM_Plex_Mono, Inter } from "next/font/google";
 import "./globals.css";
 
 const inter = Inter({
   subsets: ["latin"],
   variable: "--font-sans-stack",
+  display: "swap",
+});
+
+/** Warm, bookish display face for headings; body text stays in Inter for dense reading. */
+const display = Fraunces({
+  subsets: ["latin"],
+  weight: ["500", "600", "700"],
+  variable: "--font-display-stack",
   display: "swap",
 });
 
@@ -16,16 +24,23 @@ const mono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Signal — Research intelligence",
+  title: {
+    default: "PaperPuffin — Your research companion",
+    template: "%s · PaperPuffin",
+  },
   description:
-    "Signal monitors your research topics and tells you what changed, why it matters, and what to do next.",
+    "PaperPuffin helps student researchers discover relevant papers, understand complex findings, and stay current with the science that matters to their projects.",
+};
+
+export const viewport: Viewport = {
+  themeColor: "#fbf8f3",
 };
 
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={`${inter.variable} ${mono.variable}`}>
+    <html lang="en" className={`${inter.variable} ${display.variable} ${mono.variable}`}>
       <body className="font-sans antialiased">{children}</body>
     </html>
   );

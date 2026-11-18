@@ -31,7 +31,7 @@ it.skipIf(!process.env.SIGNAL_LIVE_TESTS)("retrieves real records for a broad an
   const now = Date.now();
   const deadline = now + 60_000;
   const feed = await fetchPreprints("biorxiv", { from: new Date(now - 2 * 864e5).toISOString().slice(0, 10), to: new Date(now).toISOString().slice(0, 10), deadline });
-  for (const [name, p, sens] of [["broad: KRAS G12D", EXAMPLE_PROFILE, "balanced"], ["niche: spectinomycin", niche, "balanced"]] as [string, TopicProfile, Sensitivity][]) {
+  for (const [name, p, sens] of [["example: C. difficile", EXAMPLE_PROFILE, "balanced"], ["niche: spectinomycin", niche, "balanced"]] as [string, TopicProfile, Sensitivity][]) {
     const w = topicWindow({ backfilledAt: null, lastCheckedAt: null }, now);
     const [pm, ct, ep] = await Promise.all([
       fetchPubMed(p, { ...w, deadline, limit: 200 }),

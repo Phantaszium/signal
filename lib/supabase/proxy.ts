@@ -4,8 +4,9 @@ import { NextResponse, type NextRequest } from "next/server";
 /** Routes reachable without a session. */
 const PUBLIC_PATHS = ["/login", "/signup", "/forgot-password", "/auth/", "/api/cron/"];
 
+/** The landing page is public; it sends signed-in visitors on to /home itself. */
 const isPublic = (pathname: string) =>
-  PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p));
+  pathname === "/" || PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p));
 
 /**
  * Refreshes the Supabase session cookie on every request and sends signed-out
@@ -46,7 +47,7 @@ export async function updateSession(request: NextRequest) {
   if (!signedIn && !isPublic(pathname)) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
-    url.search = pathname === "/" ? "" : `?next=${encodeURIComponent(pathname)}`;
+    url.search = `?next=${encodeURIComponent(pathname)}`;
     const redirect = NextResponse.redirect(url);
     // Carry over any cookie changes made while checking the session, such as
     // clearing an invalid one.

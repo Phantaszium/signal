@@ -50,6 +50,6 @@ export const requireReadyAccount = cache(async (): Promise<Account> => {
 
 export const requireAdmin = cache(async (): Promise<Account> => {
   const account = await requireAccount();
-  if (!account.isAdmin) redirect("/");
+  if (!account.isAdmin) redirect("/home");
   return account;
 });

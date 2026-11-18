@@ -1,5 +1,13 @@
 import type { RunRecord } from "@/lib/monitoring/types";
-import type { DigestFrequency, EvaluatedItem, MonitoringTopic, PreferenceWeights } from "@/lib/types";
+import type { LibraryEntry } from "@/lib/db/evaluations";
+import type {
+  DigestFrequency,
+  EvaluatedItem,
+  MonitoringTopic,
+  PreferenceWeights,
+  Publication,
+  StudentProfile,
+} from "@/lib/types";
 
 /** Serializable snapshot handed from the server layout to the client store. */
 export interface AppState {
@@ -11,6 +19,7 @@ export interface AppState {
     digestFrequency: DigestFrequency;
     alertsEnabled: boolean;
   };
+  student: StudentProfile;
   topics: MonitoringTopic[];
   weights: PreferenceWeights;
   /**
@@ -24,4 +33,13 @@ export interface AppState {
   savedIds: string[];
   dismissedIds: string[];
   feedbackCount: number;
+  /** Saved, viewed or annotated papers, with reading status and notes. */
+  library: LibraryEntry[];
+  /** False until migration 0004 has run (reading status and notes unavailable). */
+  libraryReady: boolean;
+  /**
+   * Library papers PaperPuffin has not assessed (saved straight from search),
+   * shown with their metadata only.
+   */
+  unassessed: Publication[];
 }

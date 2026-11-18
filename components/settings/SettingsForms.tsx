@@ -45,21 +45,21 @@ export function SettingsForms({
 
   return (
     <div className="space-y-5">
-      <Panel title="Briefings and alerts">
+      <Panel title="Briefing emails">
         {!emailConfigured && (
-          <p className="mb-3 rounded border border-high-line bg-high-soft px-3 py-2 text-[12px] leading-relaxed text-high">
-            Email is not set up on this Signal server yet, so briefings are built in the app but not sent.
+          <p className="mb-3 rounded-xl border border-high-line bg-high-soft px-3 py-2 text-[12px] leading-relaxed text-high">
+            Email is not set up on this PaperPuffin server yet, so briefings are built in the app but not sent.
           </p>
         )}
         <fieldset className="space-y-1.5" disabled={pending}>
           <legend className="mb-2 text-[12px] text-ink-muted">
-            How often should Signal email you? Sent to {email}.
+            How often should PaperPuffin email you? Sent to {email}.
           </legend>
           {(Object.keys(FREQUENCY_LABEL) as DigestFrequency[]).map((f) => (
             <label
               key={f}
               className={cx(
-                "flex cursor-pointer items-start gap-3 rounded border px-3 py-2 transition-colors",
+                "flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-2 transition-colors",
                 frequency === f ? "border-accent/50 bg-accent-soft/50" : "border-line hover:border-line-strong",
               )}
             >
@@ -94,11 +94,11 @@ export function SettingsForms({
           />
           <span>
             <span className="block text-[13px] font-medium text-ink">
-              Also email me right away about high-priority developments
+              Also email me right away about papers worth reading first
             </span>
             <span className="block text-[12px] text-ink-muted">
-              For weekly and monthly digests. High priority means directly relevant to a topic and judged a
-              major development. Daily digests already lead with these.
+              For weekly and monthly briefings. These are papers directly relevant to a topic and judged
+              significant for the field. Daily briefings already lead with them.
             </span>
           </span>
         </label>

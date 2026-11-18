@@ -1,6 +1,8 @@
 import { PaperDetail } from "@/components/paper/PaperDetail";
 import { requireReadyAccount } from "@/lib/auth/session";
-import { itemsByIds } from "@/lib/db/evaluations";
+import { itemsByIds, publicationsByIds } from "@/lib/db/evaluations";
+
+export const metadata = { title: "Paper" };
 
 export default async function PaperPage({ params }: PageProps<"/paper/[id]">) {
   const { id: raw } = await params;
@@ -12,5 +14,6 @@ export default async function PaperPage({ params }: PageProps<"/paper/[id]">) {
   }
   const account = await requireReadyAccount();
   const [item] = await itemsByIds(account.id, [id]);
-  return <PaperDetail id={id} fallback={item ?? null} />;
+  const [publication] = item ? [null] : await publicationsByIds([id]);
+  return <PaperDetail id={id} fallback={item ?? null} publication={publication ?? null} />;
 }

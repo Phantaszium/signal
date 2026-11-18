@@ -77,3 +77,42 @@ describe("fetchEuropePmcPreprints", () => {
     ).toBeNull();
   });
 });
+
+describe("literature search", () => {
+  it("builds a filtered Europe PMC query", async () => {
+    const { buildSearchQuery } = await import("@/lib/ingestion/europepmc");
+    expect(buildSearchQuery("  ")).toBe("");
+    const q = buildSearchQuery('"Vibrio natriegens"', {
+      type: "journal",
+      openAccessOnly: true,
+      journal: 'Nature "Microbiology"',
+      from: "2024-01-01",
+    });
+    expect(q).toMatch(/^\("Vibrio natriegens"\) AND NOT SRC:PPR AND OPEN_ACCESS:y AND JOURNAL:"Nature Microbiology" AND FIRST_PDATE:\[2024-01-01 TO \d{4}-\d{2}-\d{2}\]$/);
+    expect(buildSearchQuery("x", { type: "preprint", from: "not a date" })).toBe("(x) AND SRC:PPR");
+  });
+
+  it("gives PubMed records the PubMed adapter's id and link", async () => {
+    const { mapEpmcArticle } = await import("@/lib/ingestion/europepmc");
+    const hit = mapEpmcArticle({
+      id: "39999999",
+      source: "MED",
+      pmid: "39999999",
+      doi: "10.1/x",
+      title: "A <i>study</i>.",
+      abstractText: "Body",
+      isOpenAccess: "Y",
+      journalInfo: { journal: { title: "mBio" } },
+      firstPublicationDate: "2025-03-01",
+      authorList: { author: [{ fullName: "Lee K" }] },
+    });
+    expect(hit?.publication).toMatchObject({
+      id: "pmid-39999999",
+      origin: "pubmed",
+      source: "mBio",
+      title: "A study",
+      url: "https://pubmed.ncbi.nlm.nih.gov/39999999/",
+    });
+    expect(hit?.openAccess).toBe(true);
+  });
+});

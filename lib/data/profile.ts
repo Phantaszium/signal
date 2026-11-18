@@ -5,42 +5,27 @@ import type { LearnedPreference, PreferenceWeights, TopicProfile } from "@/lib/t
  * what a complete topic looks like before writing their own.
  */
 export const EXAMPLE_PROFILE: TopicProfile = {
-  program: "KRAS G12D in non-small cell lung cancer",
+  program: "Gut microbiota and resistance to C. difficile colonization",
   description:
-    "We study acquired resistance to KRAS G12D-selective inhibitors in non-small-cell lung cancer: which resistance mechanisms emerge, which combination therapies extend durability, and what the clinical trial landscape for G12D inhibitors looks like. We use patient-derived models and longitudinal ctDNA.",
+    "I'm an undergraduate in a microbiology lab studying how commensal gut bacteria protect mice from Clostridioides difficile colonization after antibiotics. We culture anaerobes, run 16S rRNA sequencing on stool samples, and are interested in bile acid metabolism and competition for nutrients.",
   keywords: [
-    "KRAS G12D",
-    "G12D inhibitor",
-    "acquired resistance",
-    "RAS/MAPK signaling",
-    "combination therapy",
+    "colonization resistance",
+    "Clostridioides difficile",
+    "gut microbiota",
+    "secondary bile acids",
+    "antibiotic-induced dysbiosis",
   ],
-  synonyms: ["KRAS p.G12D", "MRTX1133", "zoldonrasib", "pan-RAS inhibitor", "RAS(ON) inhibitor"],
-  organisms: [],
-  genes: ["KRAS", "SOS1", "SHP2", "MEK1", "ERK2", "EGFR", "MET", "NF1", "PTPN11"],
-  diseases: [
-    "non-small-cell lung cancer",
-    "lung adenocarcinoma",
-    "pancreatic ductal adenocarcinoma",
-  ],
-  techniques: [
-    "patient-derived xenograft",
-    "ctDNA sequencing",
-    "single-cell RNA-seq",
-    "CRISPR screening",
-    "phosphoproteomics",
-  ],
-  organizations: [
-    "Revolution Medicines",
-    "Mirati/BMS",
-    "Eli Lilly",
-    "Genentech/Roche",
-  ],
+  synonyms: ["Clostridium difficile", "C. difficile infection", "CDI"],
+  organisms: ["Clostridioides difficile", "Clostridium scindens"],
+  genes: ["baiCD", "tcdA", "tcdB"],
+  diseases: ["Clostridioides difficile infection"],
+  techniques: ["16S rRNA sequencing", "anaerobic culture", "gnotobiotic mice", "metabolomics"],
+  organizations: [],
   exclusions: [],
 };
 
 /**
- * The "what Signal has learned" statements. Each maps to a preference key that
+ * The "what PaperPuffin has learned" statements. Each maps to a preference key that
  * the scoring module reads, so these are not decorative: the confidence shown
  * is the live weight, and it moves as the researcher gives feedback.
  */
@@ -62,7 +47,7 @@ export const LEARNED_PREFERENCES: Omit<LearnedPreference, "confidence">[] = [
   },
   {
     id: "pref-resistance",
-    statement: "You read studies on treatment resistance.",
+    statement: "You read studies on resistance (antibiotic, drug or treatment).",
     key: "acquiredResistance",
   },
   {

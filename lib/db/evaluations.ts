@@ -2,7 +2,14 @@ import "server-only";
 
 import { db } from "@/lib/supabase/admin";
 import type { EvaluationOutcome } from "@/lib/ai/evaluate";
-import type { AiAssessment, EvaluatedItem, FeedbackAction, Publication } from "@/lib/types";
+import type {
+  AiAssessment,
+  EvaluatedItem,
+  FeedbackAction,
+  PaperGuide,
+  Publication,
+  ReadingStatus,
+} from "@/lib/types";
 
 /**
  * Publications, their per-user AI assessments, and what the user has done
@@ -339,29 +346,86 @@ export async function releaseAlerts(userId: string, publicationIds: string[]): P
 
 // --------------------------------------------------------- item state
 
+export interface LibraryEntry {
+  publicationId: string;
+  saved: boolean;
+  readingStatus: ReadingStatus | null;
+  notes: string;
+  viewedAt: string | null;
+  updatedAt: string;
+}
+
 export interface ItemState {
   savedIds: string[];
   dismissedIds: string[];
+  /** Per-paper library state for saved, viewed or annotated papers. */
+  library: LibraryEntry[];
+  /**
+   * False until migration 0004 has run: reading status, notes and history
+   * cannot be stored yet, and the UI says so instead of failing.
+   */
+  libraryReady: boolean;
 }
 
+/** Postgres "undefined column": the 0004 migration has not been applied. */
+const isMissingColumn = (error: { code?: string } | null) => error?.code === "42703";
+
+const READING = new Set(["to_read", "reading", "read"]);
+
 export async function getItemState(userId: string): Promise<ItemState> {
-  const { data, error } = await db()
+  const full = await db()
     .from("item_state")
-    .select("publication_id, saved, dismissed")
+    .select("publication_id, saved, dismissed, reading_status, notes, viewed_at, updated_at")
     .eq("user_id", userId);
-  if (error) throw error;
-  const rows = data ?? [];
+  let rows: Record<string, unknown>[];
+  let libraryReady = true;
+  if (full.error && isMissingColumn(full.error)) {
+    libraryReady = false;
+    const basic = await db()
+      .from("item_state")
+      .select("publication_id, saved, dismissed, updated_at")
+      .eq("user_id", userId);
+    if (basic.error) throw basic.error;
+    rows = basic.data ?? [];
+  } else {
+    if (full.error) throw full.error;
+    rows = full.data ?? [];
+  }
   return {
     savedIds: rows.filter((r) => r.saved).map((r) => r.publication_id as string),
     dismissedIds: rows.filter((r) => r.dismissed).map((r) => r.publication_id as string),
+    library: rows
+      .filter((r) => r.saved || r.viewed_at || r.reading_status || r.notes)
+      .map((r) => ({
+        publicationId: r.publication_id as string,
+        saved: Boolean(r.saved),
+        readingStatus: READING.has(r.reading_status as string) ? (r.reading_status as ReadingStatus) : null,
+        notes: typeof r.notes === "string" ? r.notes : "",
+        viewedAt: (r.viewed_at as string | null) ?? null,
+        updatedAt: r.updated_at as string,
+      })),
+    libraryReady,
   };
 }
 
+export interface ItemStatePatch {
+  saved?: boolean;
+  dismissed?: boolean;
+  readingStatus?: ReadingStatus | null;
+  notes?: string;
+  viewedAt?: string;
+}
+
+/**
+ * Update one paper's state. Library fields (status, notes, viewed) are
+ * dropped with `libraryReady: false` when migration 0004 has not run, so
+ * saving and dismissing keep working either way.
+ */
 export async function setItemState(
   userId: string,
   publicationId: string,
-  patch: { saved?: boolean; dismissed?: boolean },
-): Promise<void> {
+  patch: ItemStatePatch,
+): Promise<{ libraryReady: boolean }> {
   const { data: existing, error: readError } = await db()
     .from("item_state")
     .select("saved, dismissed")
@@ -369,19 +433,96 @@ export async function setItemState(
     .eq("publication_id", publicationId)
     .maybeSingle();
   if (readError) throw readError;
+  const base = {
+    user_id: userId,
+    publication_id: publicationId,
+    saved: patch.saved ?? existing?.saved ?? false,
+    dismissed: patch.dismissed ?? existing?.dismissed ?? false,
+    updated_at: new Date().toISOString(),
+  };
+  const library: Record<string, unknown> = {};
+  if (patch.readingStatus !== undefined) library.reading_status = patch.readingStatus;
+  if (patch.notes !== undefined) library.notes = patch.notes;
+  if (patch.viewedAt !== undefined) library.viewed_at = patch.viewedAt;
+
   const { error } = await db()
     .from("item_state")
+    .upsert({ ...base, ...library }, { onConflict: "user_id,publication_id" });
+  if (!error) return { libraryReady: true };
+  if (!isMissingColumn(error)) throw error;
+  const { error: retry } = await db().from("item_state").upsert(base, { onConflict: "user_id,publication_id" });
+  if (retry) throw retry;
+  return { libraryReady: false };
+}
+
+// ------------------------------------------------- on-demand assessments
+
+/**
+ * Store an assessment made outside a monitoring run, when a student asks
+ * PaperPuffin to explain a paper they found by search. It replaces any
+ * earlier assessment of the same paper for this user.
+ */
+export async function saveDirectAssessment(
+  userId: string,
+  publicationId: string,
+  topicId: string | null,
+  assessment: AiAssessment,
+): Promise<void> {
+  const { error } = await db()
+    .from("evaluations")
     .upsert(
       {
         user_id: userId,
         publication_id: publicationId,
-        saved: patch.saved ?? existing?.saved ?? false,
-        dismissed: patch.dismissed ?? existing?.dismissed ?? false,
-        updated_at: new Date().toISOString(),
+        run_id: null,
+        topic_id: assessment.topicId ?? topicId,
+        prefilter_score: 0,
+        custom_id: null,
+        assessment,
+        relevance: assessment.relevance.score,
+        significance: assessment.significance?.level ?? null,
+        evaluated_at: assessment.evaluatedAt,
+        status: "done",
+        error: null,
+        created_at: new Date().toISOString(),
       },
       { onConflict: "user_id,publication_id" },
     );
   if (error) throw error;
+}
+
+/** On-demand assessments made since `since`, for the per-day limit. */
+export async function countDirectAssessments(userId: string, since: Date): Promise<number> {
+  const { count, error } = await db()
+    .from("evaluations")
+    .select("*", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .is("run_id", null)
+    .gte("created_at", since.toISOString());
+  if (error) throw error;
+  return count ?? 0;
+}
+
+/** Attach a generated study guide to the stored assessment. */
+export async function saveGuide(userId: string, publicationId: string, guide: PaperGuide): Promise<boolean> {
+  const { data, error } = await db()
+    .from("evaluations")
+    .select("assessment")
+    .eq("user_id", userId)
+    .eq("publication_id", publicationId)
+    .eq("status", "done")
+    .maybeSingle();
+  if (error) throw error;
+  if (!data?.assessment) return false;
+  const assessment = data.assessment as AiAssessment;
+  const next: AiAssessment = { ...assessment, guides: { ...(assessment.guides ?? {}), [guide.level]: guide } };
+  const { error: writeError } = await db()
+    .from("evaluations")
+    .update({ assessment: next })
+    .eq("user_id", userId)
+    .eq("publication_id", publicationId);
+  if (writeError) throw writeError;
+  return true;
 }
 
 export async function recordFeedbackEvent(

@@ -1,26 +1,33 @@
 /**
- * Signal's ranking model.
+ * PaperPuffin's ranking model.
  *
- * Design goal: transparent and cheap to improve, not clever. Every dimension
- * is a bounded 0–100 function of (publication signals x research profile x
- * learned preferences), and every dimension reports the reasons that moved it
- * so the UI can show its work.
+ * Two stages:
  *
- * To improve ranking later, replace the body of a `score*` function or swap
- * DIMENSION_WEIGHTS. Nothing in the UI hardcodes a score.
+ *   1. prefilterScore — a cheap lexical match of every ingested record against
+ *      a monitored topic. It decides which few dozen items are worth sending
+ *      to the AI at all; most of the volume is dropped here. How much it takes
+ *      to pass depends on the topic's sensitivity.
+ *   2. rankEvaluated — combines the AI's per-dimension judgement (relevance,
+ *      novelty, evidence, strategic significance) with the user's learned
+ *      preference weights into one transparent composite score.
+ *
+ * The preference dimension is computed here rather than by the model so that
+ * feedback re-ranks instantly, on the client, without another AI call.
  */
 
 import type {
+  EvaluatedItem,
   Publication,
   PreferenceWeights,
-  ResearchProfile,
   ScoreBreakdown,
   ScoreExplanation,
   ScoredPublication,
+  Sensitivity,
   Tier,
+  TopicProfile,
 } from "@/lib/types";
 
-/** Relative contribution of each dimension to the composite Signal score. */
+/** Relative contribution of each dimension to the composite ranking score. */
 export const DIMENSION_WEIGHTS: Record<keyof ScoreBreakdown, number> = {
   researchRelevance: 0.32,
   userPreferenceFit: 0.22,
@@ -33,62 +40,89 @@ export const DIMENSION_LABELS: Record<keyof ScoreBreakdown, string> = {
   researchRelevance: "Research relevance",
   novelty: "Novelty",
   evidenceStrength: "Evidence strength",
-  userPreferenceFit: "User preference fit",
-  strategicSignificance: "Strategic significance",
+  userPreferenceFit: "Fit with your reading history",
+  strategicSignificance: "Field impact",
 };
 
-/** Below this research-relevance score an item never reaches the briefing. */
-export const RELEVANCE_FLOOR = 38;
+/**
+ * Lexical prefilter score a record needs on a broad topic: any one keyword,
+ * gene, organism, disease or organisation match. A technique alone is not
+ * enough. The per-run candidate cap, not this floor, is what bounds AI cost.
+ */
+export const PREFILTER_FLOOR = 15;
 
 export const TIER_THRESHOLDS = { high: 74, notable: 54 } as const;
-
-/**
- * Briefing discipline: the product promise is "3 important", so the HIGH
- * section is capped regardless of how many items clear the threshold.
- */
-export const MAX_HIGH_ITEMS = 3;
 
 const clamp = (n: number) => Math.max(0, Math.min(100, Math.round(n)));
 
 function corpusOf(pub: Publication): string {
-  return [pub.title, pub.summary, pub.abstract, ...pub.tags]
+  return [pub.title, pub.summary, pub.abstract, ...pub.tags, ...pub.organizations]
     .join(" ")
     .toLowerCase();
 }
 
-/** Case-insensitive whole-ish term match. */
-function hits(corpus: string, term: string): boolean {
-  return corpus.includes(term.toLowerCase());
-}
+const escapeRegExp = (v: string) => v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-function daysOld(publishedAt: string, now: Date): number {
-  const ms = now.getTime() - new Date(publishedAt).getTime();
-  return Math.max(0, ms / 86_400_000);
+/**
+ * Case-insensitive term match on word boundaries, so a short gene symbol like
+ * "MET" does not match "metastatic".
+ */
+function hits(corpus: string, term: string): boolean {
+  const t = term.trim().toLowerCase();
+  if (!t) return false;
+  return new RegExp(`(^|[^a-z0-9])${escapeRegExp(t)}($|[^a-z0-9])`).test(corpus);
 }
 
 // --------------------------------------------------------------- dimensions
 
-function scoreResearchRelevance(
+export interface PrefilterResult {
+  score: number;
+  /** Whether the record goes on to AI assessment for this topic. */
+  passes: boolean;
+  /** The exclusion term that ruled it out, if any. */
+  excludedBy: string | null;
+  reasons: string[];
+  matched: string[];
+}
+
+/**
+ * Stage 1: lexical match against one topic. Fast and free, so it runs on
+ * every ingested record.
+ *
+ * Sensitivity sets the bar: broad passes any single profile term; balanced
+ * needs a keyword, gene or organism (a shared disease or company name alone
+ * is too often a coincidence); strict needs one of those plus a second term.
+ */
+export function prefilterScore(
   pub: Publication,
-  profile: ResearchProfile,
-): { score: number; reasons: string[]; matched: string[] } {
+  profile: TopicProfile,
+  sensitivity: Sensitivity = "broad",
+): PrefilterResult {
   const corpus = corpusOf(pub);
   const reasons: string[] = [];
   const matched: string[] = [];
+
+  const excludedBy = profile.exclusions.find((e) => hits(corpus, e)) ?? null;
+
   let score = 8; // small floor so nothing is exactly zero
 
-  // Core program keywords carry the most weight.
-  const keywordHits = profile.keywords.filter((k) => hits(corpus, k));
+  // Core program keywords (and their synonyms) carry the most weight.
+  const keywordHits = [...profile.keywords, ...profile.synonyms].filter((k) => hits(corpus, k));
   score += keywordHits.length * 15;
   matched.push(...keywordHits);
   if (keywordHits.length) {
-    reasons.push(`Matches ${keywordHits.length} program keyword(s): ${keywordHits.join(", ")}`);
+    reasons.push(`Matches ${keywordHits.length} keyword(s): ${keywordHits.join(", ")}`);
   }
 
   const geneHits = profile.genes.filter((g) => hits(corpus, g));
   score += geneHits.length * 7;
   matched.push(...geneHits);
   if (geneHits.length) reasons.push(`Names tracked genes/proteins: ${geneHits.join(", ")}`);
+
+  const organismHits = profile.organisms.filter((o) => hits(corpus, o));
+  score += organismHits.length * 12;
+  matched.push(...organismHits);
+  if (organismHits.length) reasons.push(`Involves tracked organisms: ${organismHits.join(", ")}`);
 
   const diseaseHits = profile.diseases.filter((d) => hits(corpus, d));
   score += diseaseHits.length * 9;
@@ -97,89 +131,30 @@ function scoreResearchRelevance(
 
   const techniqueHits = profile.techniques.filter((t) => hits(corpus, t));
   score += techniqueHits.length * 4;
+
+  const orgHits = profile.organizations.filter((org) =>
+    org.split("/").some((part) => part.trim() && hits(corpus, part.trim())),
+  );
+  score += orgHits.length * 8;
+  if (orgHits.length) reasons.push(`Involves tracked organisations: ${orgHits.join(", ")}`);
   matched.push(...techniqueHits);
   if (techniqueHits.length) reasons.push(`Uses methods you work with: ${techniqueHits.join(", ")}`);
 
-  if (!keywordHits.length && !geneHits.length) {
-    reasons.push("No program keyword or tracked gene appears in the text");
-  }
+  const core = keywordHits.length + geneHits.length + organismHits.length;
+  const all = core + diseaseHits.length + techniqueHits.length + orgHits.length;
+  if (!core) reasons.push("No keyword, tracked gene or organism appears in the text");
 
-  return { score: clamp(score), reasons, matched: Array.from(new Set(matched)) };
-}
+  const clears =
+    sensitivity === "broad" ? score >= PREFILTER_FLOOR : sensitivity === "balanced" ? core >= 1 : core >= 1 && all >= 2;
+  if (excludedBy) reasons.push(`Mentions an excluded term: ${excludedBy}`);
 
-function scoreNovelty(
-  pub: Publication,
-  now: Date,
-): { score: number; reasons: string[] } {
-  const reasons: string[] = [];
-  const prior = pub.signals?.noveltyPrior ?? 50;
-  let score = prior;
-  reasons.push(`Claim novelty assessed at ${prior}/100 at ingestion`);
-
-  const age = daysOld(pub.publishedAt, now);
-  if (age <= 3) {
-    score += 8;
-    reasons.push("Published in the last 72 hours");
-  } else if (age > 21) {
-    score -= 10;
-    reasons.push("More than three weeks old");
-  }
-
-  if (pub.signals?.replication === "independent") {
-    score -= 5;
-    reasons.push("Independently replicated — confirmatory rather than new");
-  }
-
-  return { score: clamp(score), reasons };
-}
-
-function scoreEvidenceStrength(pub: Publication): {
-  score: number;
-  reasons: string[];
-} {
-  const reasons: string[] = [];
-  const s = pub.signals ?? {};
-  let score = 40;
-
-  if (pub.type === "journal") {
-    score += 12;
-    reasons.push("Peer-reviewed journal article");
-  } else if (pub.type === "preprint") {
-    score -= 6;
-    reasons.push("Preprint — not yet peer reviewed");
-  } else if (pub.type === "trial") {
-    score += 6;
-    reasons.push("Trial record with reported outcomes");
-  }
-
-  if (s.clinical) {
-    score += 14;
-    reasons.push("Includes human/clinical data");
-  }
-  if (s.inVitroOnly) {
-    score -= 18;
-    reasons.push("In-vitro only — no in-vivo or patient validation");
-  }
-  if (s.cohortSize && s.cohortSize >= 100) {
-    score += 12;
-    reasons.push(`Substantial cohort (n = ${s.cohortSize})`);
-  } else if (s.cohortSize && s.cohortSize < 20) {
-    score -= 6;
-    reasons.push(`Small sample (n = ${s.cohortSize})`);
-  }
-  if (s.negativeResult && s.cohortSize && s.cohortSize >= 100) {
-    score += 10;
-    reasons.push("Adequately powered negative result");
-  }
-  if (s.replication === "independent") {
-    score += 10;
-    reasons.push("Findings replicated across independent cohorts");
-  } else if (s.replication === "internal") {
-    score += 4;
-    reasons.push("Internally replicated across models");
-  }
-
-  return { score: clamp(score), reasons };
+  return {
+    score: clamp(score),
+    passes: clears && !excludedBy,
+    excludedBy,
+    reasons,
+    matched: Array.from(new Set(matched)),
+  };
 }
 
 function scoreUserPreferenceFit(
@@ -222,36 +197,6 @@ function scoreUserPreferenceFit(
   return { score: clamp(score), reasons };
 }
 
-function scoreStrategicSignificance(
-  pub: Publication,
-  profile: ResearchProfile,
-): { score: number; reasons: string[]; matchedOrgs: string[] } {
-  const reasons: string[] = [];
-  const corpus = `${corpusOf(pub)} ${pub.organizations.join(" ").toLowerCase()}`;
-  let score = pub.signals?.strategicPrior ?? 35;
-  reasons.push(`Competitive/programmatic weight assessed at ${score}/100`);
-
-  const matchedOrgs = profile.organizations.filter((org) =>
-    org
-      .split("/")
-      .some((part) => hits(corpus, part.trim())),
-  );
-  if (matchedOrgs.length) {
-    score += Math.min(20, matchedOrgs.length * 8);
-    reasons.push(`Involves tracked organisation(s): ${matchedOrgs.join(", ")}`);
-  }
-  if (pub.type === "regulatory") {
-    score += 10;
-    reasons.push("Regulatory development affecting program design");
-  }
-  if (pub.type === "trial") {
-    score += 8;
-    reasons.push("Clinical trial readout");
-  }
-
-  return { score: clamp(score), reasons, matchedOrgs };
-}
-
 // ----------------------------------------------------------------- composite
 
 export function computeSignalScore(scores: ScoreBreakdown): number {
@@ -268,79 +213,61 @@ export function assignTier(signalScore: number): Tier {
   return "CONTEXT";
 }
 
-export interface ScoreInput {
-  profile: ResearchProfile;
-  weights: PreferenceWeights;
-  now?: Date;
-}
-
-/** Score a single publication. Pure — safe to run on server or client. */
-export function scorePublication(
-  pub: Publication,
-  { profile, weights, now = new Date() }: ScoreInput,
+/** Turn an AI assessment into a ranked publication for the given weights. */
+export function rankEvaluated(
+  item: EvaluatedItem,
+  weights: PreferenceWeights,
 ): ScoredPublication {
-  const relevance = scoreResearchRelevance(pub, profile);
-  const novelty = scoreNovelty(pub, now);
-  const evidence = scoreEvidenceStrength(pub);
-  const preference = scoreUserPreferenceFit(pub, weights);
-  const strategic = scoreStrategicSignificance(pub, profile);
+  const { assessment: a } = item;
+  const publication: Publication = {
+    ...item.publication,
+    summary: a.summary || item.publication.summary,
+    tags: a.tags.length ? a.tags : item.publication.tags,
+    keyFindings: a.keyFindings,
+    studyDesign: a.studyDesign,
+    modelSystem: a.modelSystem,
+    limitations: a.limitations,
+    authorsReport: a.authorsReport,
+    signalInterpretation: a.signalInterpretation,
+    plainEnglish: a.plainEnglish,
+    signals: { ...a.signals, cohortSize: a.signals.cohortSize ?? undefined },
+  };
 
+  const preference = scoreUserPreferenceFit(publication, weights);
   const scores: ScoreBreakdown = {
-    researchRelevance: relevance.score,
-    novelty: novelty.score,
-    evidenceStrength: evidence.score,
+    researchRelevance: clamp(a.relevance.score),
+    novelty: clamp(a.novelty.score),
+    evidenceStrength: clamp(a.evidence.score),
     userPreferenceFit: preference.score,
-    strategicSignificance: strategic.score,
+    strategicSignificance: clamp(a.strategic.score),
+  };
+  const reasons: Record<keyof ScoreBreakdown, string[]> = {
+    researchRelevance: [a.relevance.reason],
+    userPreferenceFit: preference.reasons,
+    evidenceStrength: [a.evidence.reason],
+    novelty: [a.novelty.reason],
+    strategicSignificance: [a.strategic.reason],
   };
 
   const signalScore = computeSignalScore(scores);
-
-  const explanations: ScoreExplanation[] = [
-    {
-      dimension: "researchRelevance",
-      label: DIMENSION_LABELS.researchRelevance,
-      score: relevance.score,
-      weight: DIMENSION_WEIGHTS.researchRelevance,
-      reasons: relevance.reasons,
-    },
-    {
-      dimension: "userPreferenceFit",
-      label: DIMENSION_LABELS.userPreferenceFit,
-      score: preference.score,
-      weight: DIMENSION_WEIGHTS.userPreferenceFit,
-      reasons: preference.reasons,
-    },
-    {
-      dimension: "evidenceStrength",
-      label: DIMENSION_LABELS.evidenceStrength,
-      score: evidence.score,
-      weight: DIMENSION_WEIGHTS.evidenceStrength,
-      reasons: evidence.reasons,
-    },
-    {
-      dimension: "novelty",
-      label: DIMENSION_LABELS.novelty,
-      score: novelty.score,
-      weight: DIMENSION_WEIGHTS.novelty,
-      reasons: novelty.reasons,
-    },
-    {
-      dimension: "strategicSignificance",
-      label: DIMENSION_LABELS.strategicSignificance,
-      score: strategic.score,
-      weight: DIMENSION_WEIGHTS.strategicSignificance,
-      reasons: strategic.reasons,
-    },
-  ];
+  const explanations: ScoreExplanation[] = (
+    Object.keys(DIMENSION_WEIGHTS) as (keyof ScoreBreakdown)[]
+  ).map((dimension) => ({
+    dimension,
+    label: DIMENSION_LABELS[dimension],
+    score: scores[dimension],
+    weight: DIMENSION_WEIGHTS[dimension],
+    reasons: reasons[dimension],
+  }));
 
   return {
-    publication: pub,
+    publication,
     scores,
     signalScore,
     tier: assignTier(signalScore),
-    whyThisMatters: "", // filled by the explain module
+    whyThisMatters: a.whyThisMatters,
     explanations,
-    matchedInterests: relevance.matched,
-    matchedOrganizations: strategic.matchedOrgs,
+    matchedInterests: a.matchedInterests,
+    matchedOrganizations: a.matchedOrganizations,
   };
 }

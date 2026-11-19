@@ -1,29 +1,42 @@
 @import "tailwindcss";
 
 /*
- * Signal design tokens.
- * Deliberately restrained: one accent, one alert hue, a lot of neutral.
- * The page should read like a scientific instrument, not a product tour.
+ * PaperPuffin design tokens.
+ *
+ * Warm paper backgrounds, deep navy ink, ocean blues and teals for structure
+ * and links, and a restrained puffin-beak orange reserved for the few things
+ * that should catch the eye (priority papers, primary calls to action on the
+ * landing page). Dense scientific text needs contrast and calm, so colour is
+ * used sparingly inside reading surfaces.
  */
 :root {
-  --canvas: #f6f7f9;
+  --canvas: #fbf8f3;
+  --canvas-deep: #f4efe6;
   --surface: #ffffff;
-  --ink: #0f172a;
-  --ink-muted: #5a6577;
-  --ink-faint: #8b95a5;
-  --line: #e2e6ec;
-  --line-strong: #cbd3dd;
-  --accent: #14607a;
-  --accent-soft: #e7f1f4;
-  --high: #9a4a12;
-  --high-soft: #fdf5ee;
-  --high-line: #e6c9ac;
-  --positive: #2f6b4f;
-  --negative: #97331f;
+  --ink: #15233f;
+  --ink-muted: #4c586d;
+  --ink-faint: #7f8899;
+  --line: #e9e3d8;
+  --line-strong: #d7cfc1;
+  /* Ocean blue: links, active nav, relevance. */
+  --accent: #1d6a87;
+  --accent-strong: #15526a;
+  --accent-soft: #e6f1f4;
+  /* Sea teal: secondary highlights, "from the paper" labels. */
+  --sea: #2a8c82;
+  --sea-soft: #e4f3f0;
+  /* Puffin beak: priority and the one bright note per screen. */
+  --high: #c9561f;
+  --beak: #ee7a3a;
+  --high-soft: #fdf1e8;
+  --high-line: #f1cfb6;
+  --positive: #2f7a5b;
+  --negative: #a8392b;
 }
 
 @theme inline {
   --color-canvas: var(--canvas);
+  --color-canvas-deep: var(--canvas-deep);
   --color-surface: var(--surface);
   --color-ink: var(--ink);
   --color-ink-muted: var(--ink-muted);
@@ -31,13 +44,18 @@
   --color-line: var(--line);
   --color-line-strong: var(--line-strong);
   --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
   --color-accent-soft: var(--accent-soft);
+  --color-sea: var(--sea);
+  --color-sea-soft: var(--sea-soft);
   --color-high: var(--high);
+  --color-beak: var(--beak);
   --color-high-soft: var(--high-soft);
   --color-high-line: var(--high-line);
   --color-positive: var(--positive);
   --color-negative: var(--negative);
   --font-sans: var(--font-sans-stack);
+  --font-display: var(--font-display-stack);
   --font-mono: var(--font-mono-stack);
 }
 
@@ -52,17 +70,54 @@ body {
   font-feature-settings: "cv02", "cv03", "cv04";
 }
 
-/* Numerals in scores and counters should never shift width. */
+/* Numerals in counts and dates should never shift width. */
 .tabular {
   font-variant-numeric: tabular-nums;
 }
 
-/* Small caps section labels (HIGH / NOTABLE / CONTEXT). */
+/* Small-caps section labels. */
 .eyebrow {
-  letter-spacing: 0.09em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 ::selection {
   background: var(--accent-soft);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* The puffin's loading bob. Respects reduced-motion preferences. */
+@keyframes puffin-bob {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-4px) rotate(-3deg);
+  }
+}
+.puffin-bob {
+  animation: puffin-bob 1.6s ease-in-out infinite;
+  transform-origin: 50% 80%;
+}
+@keyframes wave-drift {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+.wave-drift {
+  animation: wave-drift 6s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .puffin-bob,
+  .wave-drift {
+    animation: none;
+  }
 }

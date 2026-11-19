@@ -1,65 +1,55 @@
 "use client";
 
 import Link from "next/link";
-import { useSignal } from "@/lib/store/SignalProvider";
-import { changedPreferences } from "@/lib/preferences/model";
+import { signOutAction } from "@/app/(auth)/actions";
+import { Logo } from "@/components/brand/Puffin";
+import { NAV, isActive } from "@/components/layout/nav";
+import { Icon } from "@/components/ui/Icon";
 import { cx } from "@/components/ui/primitives";
+import { useSignal } from "@/lib/store/SignalProvider";
 
-interface NavItem {
-  href: string;
-  label: string;
-}
+const WEEK = 7 * 86_400_000;
 
-export function Sidebar({
-  nav,
-  pathname,
-}: {
-  nav: NavItem[];
-  pathname: string;
-}) {
-  const { profile, learned, savedIds, weights, briefing } = useSignal();
-  const moved = new Set(changedPreferences(weights));
+export function Sidebar({ pathname }: { pathname: string }) {
+  const { account, savedIds, developments, topics, now, library } = useSignal();
+  const newThisWeek = developments.filter((d) => now - Date.parse(d.evaluatedAt) < WEEK).length;
+  const toRead = savedIds.filter((id) => library.get(id)?.readingStatus !== "read").length;
+
+  const count = (href: string): number | null => {
+    if (href === "/discover" && newThisWeek) return newThisWeek;
+    if (href === "/library" && toRead) return toRead;
+    return null;
+  };
 
   return (
-    <div className="flex min-h-full flex-col">
-      {/* Brand */}
-      <div className="border-b border-line px-5 py-5">
-        <div className="flex items-baseline gap-2">
-          <span className="text-[17px] font-semibold tracking-tight text-ink">
-            Signal
-          </span>
-          <span className="h-1.5 w-1.5 rounded-full bg-accent" />
-        </div>
-        <p className="mt-1 text-[11px] leading-snug text-ink-faint">
-          Know what changed before it changes your field.
-        </p>
-      </div>
+    <div className="flex min-h-full flex-col px-4 py-5">
+      <Link href="/home" className="px-2" aria-label="PaperPuffin home">
+        <Logo />
+      </Link>
+      <p className="mt-1 px-2 text-[11.5px] text-ink-faint">Your research companion.</p>
 
-      {/* Navigation */}
-      <nav className="border-b border-line px-3 py-3">
-        {nav.map((item) => {
-          const active =
-            item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+      <nav aria-label="Main" className="mt-6 space-y-0.5">
+        {NAV.map((item) => {
+          const active = isActive(item, pathname);
+          const c = count(item.href);
           return (
             <Link
               key={item.href}
               href={item.href}
+              aria-current={active ? "page" : undefined}
               className={cx(
-                "flex items-center justify-between rounded px-2 py-1.5 text-[13px] transition-colors",
-                active
-                  ? "bg-accent-soft font-medium text-accent"
-                  : "text-ink-muted hover:bg-canvas hover:text-ink",
+                "flex items-center gap-2.5 rounded-xl px-3 py-2 text-[14px] transition-colors",
+                active ? "bg-surface font-semibold text-accent shadow-[0_1px_2px_rgba(21,35,63,0.06)]" : "text-ink-muted hover:bg-surface/70 hover:text-ink",
               )}
             >
-              <span>{item.label}</span>
-              {item.href === "/" && (
-                <span className="tabular text-[11px] text-ink-faint">
-                  {briefing.funnel.important}
-                </span>
-              )}
-              {item.href === "/saved" && savedIds.length > 0 && (
-                <span className="tabular text-[11px] text-ink-faint">
-                  {savedIds.length}
+              <Icon name={item.icon} />
+              <span className="flex-1">{item.label}</span>
+              {c !== null && (
+                <span
+                  title={item.href === "/discover" ? "New recommendations this week" : "Saved papers not yet read"}
+                  className="tabular rounded-full bg-accent-soft px-1.5 text-[11px] font-semibold text-accent"
+                >
+                  {c}
                 </span>
               )}
             </Link>
@@ -67,86 +57,52 @@ export function Sidebar({
         })}
       </nav>
 
-      {/* Your Research Profile */}
-      <section className="border-b border-line px-5 py-4">
+      <section className="mt-7 px-2">
         <div className="flex items-center justify-between">
-          <h3 className="eyebrow text-[10px] font-semibold text-ink-muted">
-            Your Research Profile
-          </h3>
-          <Link
-            href="/profile"
-            className="text-[11px] font-medium text-accent hover:underline"
-          >
-            Edit Profile
+          <h3 className="eyebrow text-[10px] font-semibold text-ink-faint">Topics you follow</h3>
+          <Link href="/topics/new" className="text-[11.5px] font-medium text-accent hover:underline">
+            + Add
           </Link>
         </div>
-
-        <dl className="mt-3 space-y-3">
-          <div>
-            <dt className="text-[10px] font-medium text-ink-faint">Program</dt>
-            <dd className="mt-0.5 text-[13px] font-medium text-ink">
-              {profile.program}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-[10px] font-medium text-ink-faint">
-              Scientific interests
-            </dt>
-            <dd className="mt-1 flex flex-wrap gap-1">
-              {profile.keywords.slice(0, 6).map((k) => (
-                <span
-                  key={k}
-                  className="rounded border border-line bg-canvas px-1.5 py-0.5 text-[11px] text-ink-muted"
-                >
-                  {k}
+        <ul className="mt-2.5 space-y-1.5">
+          {topics.map((t) => (
+            <li key={t.id}>
+              <Link
+                href={`/topics/${t.id}`}
+                className={cx(
+                  "flex items-start gap-2 text-[12.5px] leading-snug hover:text-accent",
+                  t.active ? "text-ink" : "text-ink-faint",
+                )}
+              >
+                <span aria-hidden className={cx("mt-[6px] h-1.5 w-1.5 shrink-0 rounded-full", t.active ? "bg-sea" : "bg-line-strong")} />
+                <span>
+                  {t.profile.program}
+                  {!t.active && <span className="text-ink-faint"> (paused)</span>}
                 </span>
-              ))}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-[10px] font-medium text-ink-faint">
-              Tracked organizations
-            </dt>
-            <dd className="mt-1 text-[12px] leading-relaxed text-ink-muted">
-              {profile.organizations.join(" · ")}
-            </dd>
-          </div>
-        </dl>
-      </section>
-
-      {/* What Signal has learned */}
-      <section className="px-5 py-4">
-        <h3 className="eyebrow text-[10px] font-semibold text-ink-muted">
-          What Signal has learned
-        </h3>
-        <ul className="mt-3 space-y-2.5">
-          {learned.map((pref) => (
-            <li key={pref.id}>
-              <p className="text-[12px] leading-snug text-ink">
-                &ldquo;{pref.statement}&rdquo;
-              </p>
-              <div className="mt-1 flex items-center gap-2">
-                <div className="h-1 flex-1 overflow-hidden rounded-full bg-line">
-                  <div
-                    className={cx(
-                      "h-full rounded-full transition-all duration-500",
-                      moved.has(pref.key) ? "bg-high" : "bg-accent",
-                    )}
-                    style={{ width: `${Math.round(pref.confidence * 100)}%` }}
-                  />
-                </div>
-                <span className="tabular text-[10px] text-ink-faint">
-                  {Math.round(pref.confidence * 100)}%
-                </span>
-              </div>
+              </Link>
             </li>
           ))}
         </ul>
-        <p className="mt-3 text-[10px] leading-snug text-ink-faint">
-          Confidence updates as you mark items important or not relevant. Bars in
-          amber have moved from their starting values this session.
-        </p>
       </section>
+
+      <div className="mt-auto space-y-1 border-t border-line px-2 pt-4 text-[12.5px]">
+        <p className="truncate text-ink-faint" title={account.email}>
+          {account.email}
+        </p>
+        <Link href="/settings" className="flex items-center gap-2 text-ink-muted hover:text-ink">
+          <Icon name="settings" size={15} /> Account settings
+        </Link>
+        {account.isAdmin && (
+          <Link href="/admin" className="flex items-center gap-2 text-ink-muted hover:text-ink">
+            <Icon name="check" size={15} /> Beta access
+          </Link>
+        )}
+        <form action={signOutAction}>
+          <button type="submit" className="flex items-center gap-2 text-ink-muted hover:text-ink">
+            <Icon name="logout" size={15} /> Sign out
+          </button>
+        </form>
+      </div>
     </div>
   );
 }

@@ -1,0 +1,474 @@
+{
+  "totalCount": 83,
+  "studies": [
+    {
+      "protocolSection": {
+        "identificationModule": {
+          "nctId": "NCT07397338",
+          "orgStudyIdInfo": {
+            "id": "RMC-APEX-103"
+          },
+          "organization": {
+            "fullName": "Revolution Medicines, Inc.",
+            "class": "INDUSTRY"
+          },
+          "briefTitle": "Study of RAS(ON) Inhibitors in Combination With Ivonescimab in Patients With Solid Tumors",
+          "officialTitle": "A Phase 1/2 Open-Label, Multicenter Study of RAS(ON) Inhibitors in Combination With Ivonescimab With or Without Other Anti-Cancer Agents in Patients With Solid Tumors"
+        },
+        "statusModule": {
+          "statusVerifiedDate": "2026-11",
+          "overallStatus": "RECRUITING",
+          "expandedAccessInfo": {
+            "hasExpandedAccess": false
+          },
+          "startDateStruct": {
+            "date": "2026-01-30",
+            "type": "ACTUAL"
+          },
+          "primaryCompletionDateStruct": {
+            "date": "2029-05",
+            "type": "ESTIMATED"
+          },
+          "completionDateStruct": {
+            "date": "2029-05",
+            "type": "ESTIMATED"
+          },
+          "studyFirstSubmitDate": "2026-02-02",
+          "studyFirstSubmitQcDate": "2026-02-02",
+          "studyFirstPostDateStruct": {
+            "date": "2026-02-09",
+            "type": "ACTUAL"
+          },
+          "lastUpdateSubmitDate": "2026-11-02",
+          "lastUpdatePostDateStruct": {
+            "date": "2026-11-04",
+            "type": "ACTUAL"
+          }
+        },
+        "sponsorCollaboratorsModule": {
+          "responsibleParty": {
+            "type": "SPONSOR"
+          },
+          "leadSponsor": {
+            "name": "Revolution Medicines, Inc.",
+            "class": "INDUSTRY"
+          },
+          "collaborators": [
+            {
+              "name": "Summit Therapeutics",
+              "class": "INDUSTRY"
+            }
+          ]
+        },
+        "descriptionModule": {
+          "briefSummary": "The purpose of this study is to evaluate the safety, tolerability, pharmacokinetics (PK), and preliminary antitumor activity of RAS(ON) inhibitors in combination with ivonescimab in adults with advanced or metastatic solid tumors with a RAS mutation."
+        },
+        "conditionsModule": {
+          "conditions": [
+            "Advanced Solid Tumors",
+            "Metastatic Solid Tumors",
+            "Non-small Cell Lung Cancer (NSCLC)",
+            "NSCLC",
+            "Colorectal Cancer (CRC)",
+            "CRC"
+          ],
+          "keywords": [
+            "Advanced Solid Tumors",
+            "Metastatic Solid Tumors",
+            "Non-small Cell Lung Cancer",
+            "NSCLC",
+            "Colorectal Cancer",
+            "CRC",
+            "RAS",
+            "NRAS",
+            "KRAS",
+            "HRAS",
+            "RAS Mutation"
+          ]
+        },
+        "designModule": {
+          "studyType": "INTERVENTIONAL",
+          "phases": [
+            "PHASE1",
+            "PHASE2"
+          ],
+          "designInfo": {
+            "allocation": "NON_RANDOMIZED",
+            "interventionModel": "PARALLEL",
+            "primaryPurpose": "TREATMENT",
+            "maskingInfo": {
+              "masking": "NONE"
+            }
+          },
+          "enrollmentInfo": {
+            "count": 370,
+            "type": "ESTIMATED"
+          }
+        },
+        "armsInterventionsModule": {
+          "armGroups": [
+            {
+              "label": "Arm A: Daraxonrasib + Ivonescimab Combination",
+              "type": "EXPERIMENTAL",
+              "description": "Dose Exploration and Dose Expansion (+ Carboplatin/Cisplatin + Pemetrexed)",
+              "interventionNames": [
+                "Drug: Daraxonrasib",
+                "Drug: Ivonescimab",
+                "Drug: Carboplatin/Cisplatin + Pemetrexed (Dose Expansion Only)"
+              ]
+            },
+            {
+              "label": "Arm B: Elironrasib + Ivonescimab Combination",
+              "type": "EXPERIMENTAL",
+              "description": "Dose Exploration and Dose Expansion. Dose Expansion will include two separate cohorts: Cohort B1 (+ daraxonrasib) and Cohort B2 (+ Carboplatin/Cisplatin + Pemetrexed).",
+              "interventionNames": [
+                "Drug: Elironrasib",
+                "Drug: Ivonescimab",
+                "Drug: Carboplatin/Cisplatin + Pemetrexed (Cohort B2 Only)",
+                "Drug: Daraxonrasib (Cohort B1 only)"
+              ]
+            },
+            {
+              "label": "Arm C: Zoldonrasib + Ivonescimab Combination",
+              "type": "EXPERIMENTAL",
+              "description": "Dose Exploration and Dose Expansion. Dose Expansion will include two separate cohorts: Cohort C1 and Cohort C2 (+ Cetuximab).",
+              "interventionNames": [
+                "Drug: Zoldonrasib",
+                "Drug: Ivonescimab",
+                "Drug: cetuximab (Cohort C2 Only)"
+              ]
+            }
+          ],
+          "interventions": [
+            {
+              "type": "DRUG",
+              "name": "Daraxonrasib",
+              "description": "oral tablets",
+              "armGroupLabels": [
+                "Arm A: Daraxonrasib + Ivonescimab Combination"
+              ]
+            },
+            {
+              "type": "DRUG",
+              "name": "Elironrasib",
+              "description": "oral tablets",
+              "armGroupLabels": [
+                "Arm B: Elironrasib + Ivonescimab Combination"
+              ]
+            },
+            {
+              "type": "DRUG",
+              "name": "Zoldonrasib",
+              "description": "oral tablets",
+              "armGroupLabels": [
+                "Arm C: Zoldonrasib + Ivonescimab Combination"
+              ]
+            },
+            {
+              "type": "DRUG",
+              "name": "Ivonescimab",
+              "description": "IV infusion",
+              "armGroupLabels": [
+                "Arm A: Daraxonrasib + Ivonescimab Combination",
+                "Arm B: Elironrasib + Ivonescimab Combination",
+                "Arm C: Zoldonrasib + Ivonescimab Combination"
+              ]
+            },
+            {
+              "type": "DRUG",
+              "name": "Carboplatin/Cisplatin + Pemetrexed (Dose Expansion Only)",
+              "description": "IV infusion",
+              "armGroupLabels": [
+                "Arm A: Daraxonrasib + Ivonescimab Combination"
+              ]
+            },
+            {
+              "type": "DRUG",
+              "name": "cetuximab (Cohort C2 Only)",
+              "description": "IV infusion",
+              "armGroupLabels": [
+                "Arm C: Zoldonrasib + Ivonescimab Combination"
+              ]
+            },
+            {
+              "type": "DRUG",
+              "name": "Carboplatin/Cisplatin + Pemetrexed (Cohort B2 Only)",
+              "description": "IV infusion",
+              "armGroupLabels": [
+                "Arm B: Elironrasib + Ivonescimab Combination"
+              ]
+            },
+            {
+              "type": "DRUG",
+              "name": "Daraxonrasib (Cohort B1 only)",
+              "description": "oral tablets",
+              "armGroupLabels": [
+                "Arm B: Elironrasib + Ivonescimab Combination"
+              ]
+            }
+          ]
+        },
+        "outcomesModule": {
+          "primaryOutcomes": [
+            {
+              "measure": "Number of patients with adverse events (AEs)",
+              "description": "Number of patients with AEs as assessed by CTCAE v5.",
+              "timeFrame": "Up to approximately 4 years"
+            },
+            {
+              "measure": "Changes in vital signs",
+              "description": "Number of patients with changes in vital signs.",
+              "timeFrame": "Up to approximately 4 years"
+            },
+            {
+              "measure": "Changes in clinical laboratory test values",
+              "description": "Number of patients with changes in clinical laboratory test values.",
+              "timeFrame": "Up to approximately 4 years"
+            },
+            {
+              "measure": "Dose Limiting Toxicities",
+              "description": "Number of patients with dose limiting toxicities",
+              "timeFrame": "28 days"
+            }
+          ]
+        }
+      },
+      "hasResults": false
+    },
+    {
+      "protocolSection": {
+        "identificationModule": {
+          "nctId": "NCT05553834",
+          "orgStudyIdInfo": {
+            "id": "PRO00111111"
+          },
+          "organization": {
+            "fullName": "Duke University",
+            "class": "OTHER"
+          },
+          "briefTitle": "PCSK9 Inhibitor and PD-1 Inhibitor in Patients With Metastatic, Refractory To Prior Anti PD-1 Non-small Cell Lung",
+          "officialTitle": "A Phase II Study of PCSK9 Inhibitor Alirocumab and PD-1 Inhibitor Cemiplimab in Patients With Metastatic, Refractory To Prior Anti PD-1 Non-small Cell Lung Cancer: TOP2201"
+        },
+        "statusModule": {
+          "statusVerifiedDate": "2026-10",
+          "overallStatus": "ACTIVE_NOT_RECRUITING",
+          "expandedAccessInfo": {
+            "hasExpandedAccess": false
+          },
+          "startDateStruct": {
+            "date": "2023-05-16",
+            "type": "ACTUAL"
+          },
+          "primaryCompletionDateStruct": {
+            "date": "2025-09-16",
+            "type": "ACTUAL"
+          },
+          "completionDateStruct": {
+            "date": "2026-11-01",
+            "type": "ESTIMATED"
+          },
+          "studyFirstSubmitDate": "2022-09-02",
+          "studyFirstSubmitQcDate": "2022-09-22",
+          "studyFirstPostDateStruct": {
+            "date": "2022-09-23",
+            "type": "ACTUAL"
+          },
+          "resultsFirstSubmitDate": "2026-09-10",
+          "resultsFirstSubmitQcDate": "2026-10-14",
+          "resultsFirstPostDateStruct": {
+            "date": "2026-11-04",
+            "type": "ACTUAL"
+          },
+          "lastUpdateSubmitDate": "2026-10-14",
+          "lastUpdatePostDateStruct": {
+            "date": "2026-11-04",
+            "type": "ACTUAL"
+          }
+        },
+        "sponsorCollaboratorsModule": {
+          "responsibleParty": {
+            "type": "SPONSOR"
+          },
+          "leadSponsor": {
+            "name": "Duke University",
+            "class": "OTHER"
+          },
+          "collaborators": [
+            {
+              "name": "Regeneron Pharmaceuticals",
+              "class": "INDUSTRY"
+            }
+          ]
+        },
+        "descriptionModule": {
+          "briefSummary": "PCSK9 mediates immune checkpoint blockade resistance by downregulating tumor cell surface MHC class 1 molecules. This study will evaluate if combining the anti-PCSK9 antibody alirocumab with the anti-PD-1 antibody cemiplimab can generate anti-tumor activity and clinical responses in patients with metastatic lung cancer who have progressed on first line immune checkpoint blockade therapy."
+        },
+        "conditionsModule": {
+          "conditions": [
+            "Non-small Cell Lung Cancer (NSCLC)"
+          ]
+        },
+        "designModule": {
+          "studyType": "INTERVENTIONAL",
+          "phases": [
+            "PHASE2"
+          ],
+          "designInfo": {
+            "allocation": "NA",
+            "interventionModel": "SINGLE_GROUP",
+            "interventionModelDescription": "Combination therapy involving anti-PCSK9 antibody alirocumab with the anti-PD-1 antibody cemiplimab.",
+            "primaryPurpose": "TREATMENT",
+            "maskingInfo": {
+              "masking": "NONE"
+            }
+          },
+          "enrollmentInfo": {
+            "count": 60,
+            "type": "ACTUAL"
+          }
+        },
+        "armsInterventionsModule": {
+          "armGroups": [
+            {
+              "label": "Alirocumab and Cemiplimab",
+              "type": "EXPERIMENTAL",
+              "description": "Combination of anti-PCSK9 antibody alirocumab with the anti-PD-1 antibody cemiplimab",
+              "interventionNames": [
+                "Combination Product: Alirocumab and Cemiplimab"
+              ]
+            }
+          ],
+          "interventions": [
+            {
+              "type": "COMBINATION_PRODUCT",
+              "name": "Alirocumab and Cemiplimab",
+              "description": "Combination of PCSK9 inhibitor Alirocumab 150mg SC q2weeks and PD-I inhibitor Cemiplimab 350mg IV q3 weeks",
+              "armGroupLabels": [
+                "Alirocumab and Cemiplimab"
+              ]
+            }
+          ]
+        },
+        "outcomesModule": {
+          "primaryOutcomes": [
+            {
+              "measure": "Number of Participants With a Complete or Partial Response (PR) Per RECIST (Response Evaluation Criteria in Solid Tumors) 1.1 Criteria",
+              "description": "A partial response (PR) under RECIST 1.1 guidelines indicates there is at least a 30% decrease in the sum of the longest diameters of target tumors, compared to the baseline measurement.",
+              "timeFrame": "Day 1 of treatment until the date of first documented progression or date of death, whichever comes first, assessed up to 110 weeks per RECIST 1.1"
+            }
+          ]
+        }
+      },
+      "hasResults": true
+    },
+    {
+      "protocolSection": {
+        "identificationModule": {
+          "nctId": "NCT02682667",
+          "orgStudyIdInfo": {
+            "id": "160061"
+          },
+          "secondaryIdInfos": [
+            {
+              "id": "16-C-0061"
+            }
+          ],
+          "organization": {
+            "fullName": "National Institutes of Health Clinical Center (CC)",
+            "class": "NIH"
+          },
+          "briefTitle": "Biospecimen Procurement for Center for Immuno-Oncology Immunotherapy Protocols",
+          "officialTitle": "Biospecimen Procurement for Center for Immuno-Oncology Immunotherapy Protocols"
+        },
+        "statusModule": {
+          "statusVerifiedDate": "2026-10-13",
+          "overallStatus": "RECRUITING",
+          "expandedAccessInfo": {
+            "hasExpandedAccess": false
+          },
+          "startDateStruct": {
+            "date": "2016-04-11",
+            "type": "ACTUAL"
+          },
+          "primaryCompletionDateStruct": {
+            "date": "2030-12-01",
+            "type": "ESTIMATED"
+          },
+          "completionDateStruct": {
+            "date": "2032-12-01",
+            "type": "ESTIMATED"
+          },
+          "studyFirstSubmitDate": "2016-02-10",
+          "studyFirstSubmitQcDate": "2016-02-11",
+          "studyFirstPostDateStruct": {
+            "date": "2016-02-15",
+            "type": "ESTIMATED"
+          },
+          "lastUpdateSubmitDate": "2026-11-04",
+          "lastUpdatePostDateStruct": {
+            "date": "2026-11-05",
+            "type": "ACTUAL"
+          }
+        },
+        "sponsorCollaboratorsModule": {
+          "responsibleParty": {
+            "type": "SPONSOR"
+          },
+          "leadSponsor": {
+            "name": "National Cancer Institute (NCI)",
+            "class": "NIH"
+          }
+        },
+        "descriptionModule": {
+          "briefSummary": "Background:\n\nCancer has a major impact in the United States and across the world. In 2015, over 1.5 million new cases of cancer were diagnosed in the U.S. Researchers want to study samples from people with cancer or a pre-malignant condition. They hope to develop more effective treatments.\n\nObjective:\n\nTo better understand the biology of malignancies and why certain cancers respond differently to treatment.\n\nEligibility:\n\nAdults at least 18 years old with cancer or a pre-cancerous condition.\n\nDesign:\n\nParticipants will be screened with a medical history, physical exam, and blood tests. Their diagnosis will be confirmed by the NCI Laboratory of Pathology.\n\nParticipants will send tissue blocks or slides from their original tumor biopsy.\n\nAt least once, participants will have a medical history, physical exam, and blood and urine tests.\n\nParticipants may have the following tests. They may have them more than once:\n\nApheresis. A needle in one arm removes blood. Blood is run through a machine and the sample cells are taken out. The rest of the blood is returned by a needle in the other arm.\n\nBone marrow aspiration and biopsy. The hipbone will be numbed. A needle will be put into the hipbone. Bone marrow will be taken out through the needle.\n\nPiece of cancer tissue taken by a needle and syringe.\n\nComputed tomography (CT) scan, magnetic resonance imaging (MRI) and/or positron emission tomography (PET) scan or ultrasound to help locate their tumor. For the scans, they lie in a machine that takes pictures.\n\nA small piece of skin removed.\n\nParticipants will be contacted by phone once a year to find out how they are doing.\n\n..."
+        },
+        "conditionsModule": {
+          "conditions": [
+            "Multiple Myeloma",
+            "Lymphoma, Non-Hodgkin",
+            "Leukemia-Lymphoma, Adult T-Cell",
+            "Hodgkin Disease",
+            "Non-Small Cell Lung Cancer"
+          ],
+          "keywords": [
+            "Apheresis Products",
+            "Immunological",
+            "Diverse Malignan",
+            "Premalignant",
+            "Protein",
+            "Natural History"
+          ]
+        },
+        "designModule": {
+          "studyType": "OBSERVATIONAL",
+          "designInfo": {
+            "observationalModel": "COHORT",
+            "timePerspective": "PROSPECTIVE"
+          },
+          "enrollmentInfo": {
+            "count": 500,
+            "type": "ESTIMATED"
+          }
+        },
+        "armsInterventionsModule": {
+          "armGroups": [
+            {
+              "label": "1/Cohort 1",
+              "description": "Patients with cancer or a premalignant condition or at risk of cancer from an immunodeficiency"
+            }
+          ]
+        },
+        "outcomesModule": {
+          "primaryOutcomes": [
+            {
+              "measure": "Sample Acquisition",
+              "description": "Biospecimen collection for study and understanding of disease.",
+              "timeFrame": "Ongoing"
+            }
+          ]
+        }
+      },
+      "hasResults": false
+    }
+  ]
+}

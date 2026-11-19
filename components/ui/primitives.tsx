@@ -1,5 +1,10 @@
 import Link from "next/link";
-import type { PublicationType, Tier } from "@/lib/types";
+import {
+  RELEVANCE_LABEL,
+  SIGNIFICANCE_LABEL,
+  type RelevanceClass,
+} from "@/lib/developments";
+import type { Publication, PublicationType, Significance, Tier } from "@/lib/types";
 
 export function cx(...parts: (string | false | null | undefined)[]) {
   return parts.filter(Boolean).join(" ");
@@ -25,7 +30,7 @@ export function Chip({
     <span
       title={title}
       className={cx(
-        "inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] leading-4 font-medium whitespace-nowrap",
+        "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] leading-4 font-medium whitespace-nowrap",
         tones[tone],
       )}
     >
@@ -33,6 +38,15 @@ export function Chip({
     </span>
   );
 }
+
+const ORIGIN_LABEL: Record<Publication["origin"], string> = {
+  pubmed: "PubMed",
+  biorxiv: "bioRxiv",
+  medrxiv: "medRxiv",
+  clinicaltrials: "ClinicalTrials.gov",
+  europepmc: "Europe PMC",
+};
+export { ORIGIN_LABEL };
 
 const TYPE_LABEL: Record<PublicationType, string> = {
   journal: "Journal",
@@ -66,6 +80,52 @@ export function TierLabel({ tier }: { tier: Tier }) {
   );
 }
 
+/** Relevance to the user's topic, as a class plus the underlying score. */
+export function RelevanceBadge({ cls, score }: { cls: RelevanceClass; score: number }) {
+  const tone = {
+    direct: "border-accent/30 bg-accent-soft text-accent",
+    related: "border-line-strong bg-white text-ink",
+    adjacent: "border-line bg-canvas text-ink-muted",
+    unrelated: "border-line bg-canvas text-ink-faint",
+  }[cls];
+  return (
+    <span
+      title="How directly this bears on your topic (AI relevance score, 0–100)"
+      className={cx(
+        "inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] leading-4 font-medium whitespace-nowrap",
+        tone,
+      )}
+    >
+      {RELEVANCE_LABEL[cls]}
+      <span className="tabular opacity-70">{score}</span>
+    </span>
+  );
+}
+
+/** How much the development changes what is known, independent of relevance. */
+export function SignificanceBadge({ level, inferred = false }: { level: Significance; inferred?: boolean }) {
+  const tone = {
+    major: "border-high-line bg-high-soft text-high",
+    moderate: "border-line-strong bg-white text-ink",
+    minor: "border-line bg-canvas text-ink-muted",
+  }[level];
+  return (
+    <span
+      title={
+        inferred
+          ? "Significance estimated from novelty, evidence and field-impact scores"
+          : "How much this changes what is known in the field (AI judgement)"
+      }
+      className={cx(
+        "inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] leading-4 font-medium whitespace-nowrap",
+        tone,
+      )}
+    >
+      {SIGNIFICANCE_LABEL[level]} significance{inferred ? "*" : ""}
+    </span>
+  );
+}
+
 /** Horizontal 0–100 bar. Used for every score in the app. */
 export function ScoreBar({
   value,
@@ -94,7 +154,7 @@ export function ScoreBar({
   );
 }
 
-/** The composite Signal score, shown as a compact block. */
+/** The composite ranking score, shown as a compact block. */
 export function SignalScoreBlock({
   score,
   emphasis = false,
@@ -105,7 +165,7 @@ export function SignalScoreBlock({
   return (
     <div
       className={cx(
-        "flex w-14 shrink-0 flex-col items-center self-start rounded border px-1 py-1.5",
+        "flex w-14 shrink-0 flex-col items-center self-start rounded-lg border px-1 py-1.5",
         emphasis ? "border-high-line bg-high-soft" : "border-line bg-canvas",
       )}
     >
@@ -118,7 +178,7 @@ export function SignalScoreBlock({
         {score}
       </span>
       <span className="eyebrow mt-1 text-[9px] font-medium text-ink-faint">
-        Signal
+        Score
       </span>
     </div>
   );
@@ -144,11 +204,11 @@ export function Button({
   className?: string;
 }) {
   const base =
-    "inline-flex items-center justify-center gap-1.5 rounded border font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed";
-  const sizes = { sm: "px-2.5 py-1 text-xs", md: "px-3 py-1.5 text-[13px]" };
+    "inline-flex items-center justify-center gap-1.5 rounded-lg border font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed";
+  const sizes = { sm: "px-2.5 py-1 text-xs", md: "px-3.5 py-2 text-[13px]" };
   const variants = {
     primary:
-      "border-accent bg-accent text-white hover:bg-[#105066] active:bg-[#0d4457]",
+      "border-accent bg-accent text-white hover:bg-accent-strong",
     secondary: active
       ? "border-accent/40 bg-accent-soft text-accent"
       : "border-line-strong bg-white text-ink-muted hover:border-ink-faint hover:text-ink",
@@ -179,7 +239,7 @@ export function LinkButton({
   variant?: "primary" | "secondary";
 }) {
   const variants = {
-    primary: "border-accent bg-accent text-white hover:bg-[#105066]",
+    primary: "border-accent bg-accent text-white hover:bg-accent-strong",
     secondary:
       "border-line-strong bg-white text-ink-muted hover:border-ink-faint hover:text-ink",
   };
@@ -187,7 +247,7 @@ export function LinkButton({
     <Link
       href={href}
       className={cx(
-        "inline-flex items-center gap-1.5 rounded border px-3 py-1.5 text-[13px] font-medium transition-colors",
+        "inline-flex items-center justify-center gap-1.5 rounded-lg border px-3.5 py-2 text-[13px] font-medium transition-colors",
         variants[variant],
       )}
     >
@@ -209,17 +269,17 @@ export function Panel({
 }) {
   return (
     <section
-      className={cx("rounded-md border border-line bg-surface", className)}
+      className={cx("rounded-2xl border border-line bg-surface", className)}
     >
       {title && (
-        <header className="flex items-center justify-between gap-2 border-b border-line px-4 py-2.5">
+        <header className="flex items-center justify-between gap-2 border-b border-line px-5 py-3">
           <h3 className="eyebrow text-[11px] font-semibold text-ink-muted">
             {title}
           </h3>
           {action}
         </header>
       )}
-      <div className="px-4 py-3">{children}</div>
+      <div className="px-5 py-4">{children}</div>
     </section>
   );
 }
@@ -237,6 +297,19 @@ export function formatDate(iso: string) {
   });
 }
 
+/** "3 hours ago", "yesterday", or a date. For timestamps, not date-only strings. */
+export function timeAgo(iso: string, now: number) {
+  const minutes = Math.round((now - Date.parse(iso)) / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  const days = Math.round(hours / 24);
+  if (days === 1) return "yesterday";
+  if (days < 7) return `${days} days ago`;
+  return formatDate(iso);
+}
+
 export function relativeDay(iso: string, now = new Date()) {
   const days = Math.round(
     (now.getTime() - parseDate(iso).getTime()) / 86_400_000,
@@ -245,4 +318,56 @@ export function relativeDay(iso: string, now = new Date()) {
   if (days === 1) return "yesterday";
   if (days < 7) return `${days} days ago`;
   return formatDate(iso);
+}
+
+/** Page title block used at the top of every signed-in page. */
+export function PageHeader({
+  title,
+  description,
+  action,
+  eyebrow,
+}: {
+  title: string;
+  description?: React.ReactNode;
+  action?: React.ReactNode;
+  eyebrow?: string;
+}) {
+  return (
+    <header className="flex max-w-6xl flex-wrap items-end justify-between gap-3">
+      <div className="max-w-2xl">
+        {eyebrow && <p className="eyebrow text-[10px] font-semibold text-accent">{eyebrow}</p>}
+        <h1 className="font-display text-[26px] leading-tight font-semibold tracking-[-0.01em] text-ink sm:text-[30px]">
+          {title}
+        </h1>
+        {description && <div className="mt-1.5 text-[14px] leading-relaxed text-ink-muted">{description}</div>}
+      </div>
+      {action}
+    </header>
+  );
+}
+
+/**
+ * Provenance label for a block of text: whether it restates the paper or is
+ * PaperPuffin's AI interpretation. Every AI-written block carries one.
+ */
+export function ProvenanceTag({ kind }: { kind: "paper" | "ai" | "mixed" }) {
+  const copy = {
+    paper: { label: "From the paper", title: "Restates what the title and abstract report", cls: "border-sea/30 bg-sea-soft text-sea" },
+    ai: { label: "AI interpretation", title: "PaperPuffin's reading, not a claim made by the authors", cls: "border-dashed border-accent/40 bg-accent-soft text-accent" },
+    mixed: { label: "Paper + AI", title: "Each point says whether it comes from the paper or from AI", cls: "border-line-strong bg-white text-ink-muted" },
+  }[kind];
+  return (
+    <span
+      title={copy.title}
+      className={cx("inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] leading-4 font-semibold whitespace-nowrap", copy.cls)}
+    >
+      {copy.label}
+    </span>
+  );
+}
+
+/** "Smith J, Doe A, Lee K et al." */
+export function authorLine(authors: string[], max = 3): string {
+  if (!authors.length) return "Authors not listed";
+  return authors.length > max ? `${authors.slice(0, max).join(", ")} et al.` : authors.join(", ");
 }
